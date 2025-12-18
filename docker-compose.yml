@@ -12,8 +12,13 @@ services:
       REGISTRY_HTTP_ADDR: :5000
       REGISTRY_STORAGE_DELETE_ENABLED: true
 
+  ldap:
+    build: ./testldap/
+    container_name: ldap
+    restart: always
+
   proxy:
-    build: ./
+    build: ./containervault/
     container_name: registry-proxy
     restart: always
     ports:

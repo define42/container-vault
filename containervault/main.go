@@ -48,6 +48,10 @@ func main() {
 	proxy.FlushInterval = -1 // important for streaming blobs
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/" {
+			serveLanding(w)
+			return
+		}
 
 		user, ok := authenticate(w, r)
 		if !ok {
@@ -194,3 +198,35 @@ func generateSelfSigned(certPath, keyPath string) error {
 
 	return nil
 }
+
+func serveLanding(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprint(w, landingHTML)
+}
+
+const landingHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerVault-Enterprise</title>
+  <style>
+    body { margin:0; font-family: "Segoe UI", sans-serif; background:#0f172a; color:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:32px 36px; max-width:520px; box-shadow:0 20px 60px rgba(0,0,0,0.35); }
+    h1 { margin:0 0 12px; font-size:32px; letter-spacing:0.5px; color:#38bdf8; }
+    p { margin:8px 0; line-height:1.5; }
+    .tag { display:inline-block; padding:6px 10px; border-radius:999px; background:rgba(56,189,248,0.12); color:#bae6fd; font-size:12px; letter-spacing:0.4px; text-transform:uppercase; }
+    .mono { font-family: "SFMono-Regular", Consolas, monospace; color:#cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="tag">Container Registry Proxy</div>
+    <h1>ContainerVault-Enterprise</h1>
+    <p>Secure gateway for your private Docker registry with per-namespace access control.</p>
+    <p class="mono">Push &amp; pull via this endpoint:<br> <strong>https://skod.net</strong></p>
+    <p class="mono">Ping: <strong>GET /v2/</strong><br> Namespaced access: <strong>/v2/&lt;team&gt;/...</strong></p>
+  </div>
+</body>
+</html>
+`
