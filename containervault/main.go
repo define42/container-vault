@@ -100,6 +100,11 @@ func main() {
 			return
 		}
 
+		if r.URL.Path == "/logout" {
+			handleLogout(w, r)
+			return
+		}
+
 		if r.URL.Path == "/api/catalog" {
 			handleCatalog(w, r)
 			return
@@ -581,6 +586,30 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, dashboardHTML, html.EscapeString(sess.User.Name), string(namespacesJSON))
 }
 
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	cookie, err := r.Cookie("cv_session")
+	if err == nil && cookie.Value != "" {
+		sessionMu.Lock()
+		delete(sessions, cookie.Value)
+		sessionMu.Unlock()
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "cv_session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
 type repoInfo struct {
 	Name string   `json:"name"`
 	Tags []string `json:"tags"`
@@ -699,7 +728,7 @@ const landingHTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ContainerVault-Enterprise</title>
+  <title>ContainerVault Enterprise</title>
   <style>
     :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
     body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
@@ -718,7 +747,7 @@ const landingHTML = `<!doctype html>
 <body>
   <div class="card">
     <div class="tag">Container Registry Proxy</div>
-    <h1>ContainerVault-Enterprise</h1>
+    <h1>ContainerVault Enterprise</h1>
     <p>Secure gateway for your private Docker registry with per-namespace access control.</p>
     <p class="mono">Push &amp; pull via this endpoint:<br> <strong>https://skod.net</strong></p>
     <p class="mono">Ping: <strong>GET /v2/</strong><br> Namespaced access: <strong>/v2/&lt;team&gt;/...</strong></p>
@@ -733,7 +762,7 @@ const loginHTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ContainerVault Login</title>
+  <title>ContainerVault Enterprise</title>
   <style>
     :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
     body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
@@ -752,7 +781,7 @@ const loginHTML = `<!doctype html>
 </head>
 <body>
   <div class="card">
-    <h1>Registry Access</h1>
+    <h1>ContainerVault Enterprise</h1>
     <p>Sign in to see your allowed namespaces and browse repository contents.</p>
     <form method="post" action="/login">
       <div>
@@ -775,7 +804,7 @@ const dashboardHTML = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Registry Dashboard</title>
+  <title>ContainerVault Enterprise</title>
   <style>
     :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
     body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
@@ -794,12 +823,21 @@ const dashboardHTML = `<!doctype html>
     .repo { padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:rgba(15,23,42,0.6); margin-bottom:12px; }
     .repo strong { color:#e2e8f0; }
     .tags { color:var(--muted); font-size:13px; margin-top:6px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .logout { border:1px solid var(--line); background:#0b1224; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; }
     @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
-  <h1>Registry Dashboard</h1>
-  <p>Welcome, %s. Select a namespace to browse repositories and tags.</p>
+  <div class="topbar">
+    <div>
+      <h1>ContainerVault Enterprise</h1>
+      <p>Welcome, %s. Select a namespace to browse repositories and tags.</p>
+    </div>
+    <form method="post" action="/logout">
+      <button class="logout" type="submit">Logout</button>
+    </form>
+  </div>
   <div class="layout">
     <div class="panel">
       <div class="mono">Namespaces</div>
