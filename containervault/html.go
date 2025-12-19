@@ -120,11 +120,14 @@ const dashboardHTML = `<!doctype html>
     .ref { color:#cbd5e1; font-size:13px; margin-top:10px; word-break:break-all; }
     .detail { min-height:220px; }
     .taglist { display:grid; gap:10px; margin-top:12px; }
-    .tagrow { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:rgba(15,23,42,0.6); }
+    .tagrow { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:rgba(15,23,42,0.6); cursor:pointer; }
     .tagrow-header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .tagname { font-weight:600; color:#e2e8f0; }
     .tagstats { display:flex; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
     .stat { padding:4px 8px; border-radius:999px; background:rgba(148,163,184,0.12); }
+    .layers { margin-top:10px; border-top:1px dashed rgba(148,163,184,0.25); padding-top:10px; display:grid; gap:8px; }
+    .layer { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#cbd5e1; }
+    .layer code { color:#e2e8f0; }
     @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
   </style>
 </head>

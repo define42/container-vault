@@ -56,3 +56,9 @@ type tagInfo struct {
 	Digest         string `json:"digest"`
 	CompressedSize int64  `json:"compressed_size"`
 }
+
+type layerInfo struct {
+	Digest    string `json:"digest"`
+	Size      int64  `json:"size"`
+	MediaType string `json:"media_type"`
+}

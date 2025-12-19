@@ -1,47 +1,21 @@
-type BootstrapData = {
-  namespaces: string[];
-};
-
-type TagInfo = {
-  tag: string;
-  digest: string;
-  compressed_size: number;
-};
-
-type State = {
-  expandedNamespace: string | null;
-  expandedRepo: string | null;
-  expandedFolders: Record<string, boolean>;
-  reposByNamespace: Record<string, string[]>;
-  repoLoading: Record<string, boolean>;
-  tagsByRepo: Record<string, string[]>;
-  layersByTag: Record<string, LayerInfo[]>;
-  layersLoading: Record<string, boolean>;
-  layersVisible: Record<string, boolean>;
-};
-
-type LayerInfo = {
-  digest: string;
-  size: number;
-  media_type: string;
-};
-
+"use strict";
 (function initDashboard() {
   const tree = document.getElementById("tree");
   const detail = document.getElementById("detailPanel");
   if (!tree || !detail) {
     return;
   }
+
   const treeEl = tree;
   const detailEl = detail;
 
   const bootstrapEl = document.getElementById("cv-bootstrap");
-  const bootstrap: BootstrapData = bootstrapEl?.textContent
+  const bootstrap = bootstrapEl && bootstrapEl.textContent
     ? JSON.parse(bootstrapEl.textContent)
     : { namespaces: [] };
   const namespaces = Array.isArray(bootstrap.namespaces) ? bootstrap.namespaces : [];
 
-  const state: State = {
+  const state = {
     expandedNamespace: null,
     expandedRepo: null,
     expandedFolders: {},
@@ -53,20 +27,20 @@ type LayerInfo = {
     layersVisible: {},
   };
 
-  function escapeHTML(value: string): string {
+  function escapeHTML(value) {
     return String(value).replace(/[&<>"']/g, (ch) => {
-      const map: Record<string, string> = {
+      const map = {
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#39;",
       };
-      return map[ch] ?? ch;
+      return map[ch] || ch;
     });
   }
 
-  function renderTree(): void {
+  function renderTree() {
     if (!namespaces || namespaces.length === 0) {
       treeEl.innerHTML = '<div class="mono">No namespaces assigned.</div>';
       return;
@@ -99,7 +73,7 @@ type LayerInfo = {
       .join("");
   }
 
-  function renderRepos(namespace: string, repos: string[], loading?: boolean): string {
+  function renderRepos(namespace, repos, loading) {
     if (loading) {
       return '<div class="leaf mono">Loading repositories...</div>';
     }
@@ -110,24 +84,18 @@ type LayerInfo = {
     return renderFolderNode(namespace, tree);
   }
 
-  function repoLabel(namespace: string, repo: string): string {
+  function repoLabel(namespace, repo) {
     return repo.startsWith(namespace + "/") ? repo.slice(namespace.length + 1) : repo;
   }
 
-  function repoLeafLabel(namespace: string, repo: string): string {
+  function repoLeafLabel(namespace, repo) {
     const label = repoLabel(namespace, repo);
     const parts = label.split("/");
     return parts[parts.length - 1];
   }
 
-  type RepoTreeNode = {
-    path: string;
-    children: Record<string, RepoTreeNode>;
-    repos: string[];
-  };
-
-  function buildRepoTree(namespace: string, repos: string[]): RepoTreeNode {
-    const root: RepoTreeNode = { path: "", children: {}, repos: [] };
+  function buildRepoTree(namespace, repos) {
+    const root = { path: "", children: {}, repos: [] };
     repos.forEach((repo) => {
       const label = repoLabel(namespace, repo);
       const parts = label.split("/");
@@ -149,7 +117,7 @@ type LayerInfo = {
     return root;
   }
 
-  function renderFolderNode(namespace: string, node: RepoTreeNode): string {
+  function renderFolderNode(namespace, node) {
     const repoMarkup = node.repos
       .slice()
       .sort()
@@ -187,7 +155,7 @@ type LayerInfo = {
     return repoMarkup + folderMarkup;
   }
 
-  function renderRepoNode(namespace: string, repo: string, label: string): string {
+  function renderRepoNode(namespace, repo, label) {
     const expanded = state.expandedRepo === repo;
     const caret = expanded ? "&#9662;" : "&#9656;";
     return (
@@ -208,7 +176,7 @@ type LayerInfo = {
     );
   }
 
-  async function loadRepos(namespace: string): Promise<void> {
+  async function loadRepos(namespace) {
     state.repoLoading[namespace] = true;
     renderTree();
     try {
@@ -221,7 +189,7 @@ type LayerInfo = {
         renderTree();
         return;
       }
-      const data = JSON.parse(text) as { repositories?: string[] };
+      const data = JSON.parse(text);
       state.reposByNamespace[namespace] = data.repositories || [];
     } catch (err) {
       detailEl.innerHTML = '<div class="mono">Unable to load repositories.</div>';
@@ -231,7 +199,7 @@ type LayerInfo = {
     }
   }
 
-  async function loadTags(repo: string): Promise<void> {
+  async function loadTags(repo) {
     detailEl.innerHTML = '<div class="mono">Loading tags...</div>';
     try {
       const res = await fetch("/api/tags?repo=" + encodeURIComponent(repo));
@@ -241,7 +209,7 @@ type LayerInfo = {
         detailEl.innerHTML = '<div class="mono">' + escapeHTML(text) + "</div>";
         return;
       }
-      const data = JSON.parse(text) as { tags?: string[] };
+      const data = JSON.parse(text);
       state.tagsByRepo[repo] = data.tags || [];
       renderDetail(repo, state.tagsByRepo[repo]);
     } catch (err) {
@@ -249,7 +217,7 @@ type LayerInfo = {
     }
   }
 
-  function renderDetail(repo: string, tags: string[]): void {
+  function renderDetail(repo, tags) {
     if (!repo) {
       detailEl.innerHTML = "Select a repository to view tags.";
       return;
@@ -293,7 +261,7 @@ type LayerInfo = {
     });
   }
 
-  function formatBytes(value: number | null | undefined): string {
+  function formatBytes(value) {
     if (value == null || value < 0) {
       return "unknown size";
     }
@@ -307,7 +275,7 @@ type LayerInfo = {
     return size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1) + " " + units[unitIndex];
   }
 
-  async function loadTagInfo(repo: string, tag: string): Promise<void> {
+  async function loadTagInfo(repo, tag) {
     try {
       const res = await fetch(
         "/api/taginfo?repo=" + encodeURIComponent(repo) + "&tag=" + encodeURIComponent(tag),
@@ -317,14 +285,14 @@ type LayerInfo = {
         updateTagRow(tag, { tag, digest: "unavailable", compressed_size: -1 });
         return;
       }
-      const data = JSON.parse(text) as TagInfo;
+      const data = JSON.parse(text);
       updateTagRow(tag, data);
     } catch (err) {
       updateTagRow(tag, { tag, digest: "unavailable", compressed_size: -1 });
     }
   }
 
-  function updateTagRow(tag: string, data: TagInfo): void {
+  function updateTagRow(tag, data) {
     const row = detailEl.querySelector('[data-tag-row="' + CSS.escape(tag) + '"]');
     if (!row) {
       return;
@@ -349,7 +317,7 @@ type LayerInfo = {
       "</span>";
   }
 
-  function renderLayers(tagKey: string): string {
+  function renderLayers(tagKey) {
     if (state.layersLoading[tagKey]) {
       return '<div class="layers"><div class="mono">Loading layers...</div></div>';
     }
@@ -377,7 +345,7 @@ type LayerInfo = {
     );
   }
 
-  async function loadLayers(repo: string, tag: string): Promise<void> {
+  async function loadLayers(repo, tag) {
     const key = repo + ":" + tag;
     if (state.layersByTag[key]) {
       return;
@@ -395,7 +363,7 @@ type LayerInfo = {
         updateLayersUI(key);
         return;
       }
-      const data = JSON.parse(text) as { layers?: LayerInfo[] };
+      const data = JSON.parse(text);
       state.layersByTag[key] = data.layers || [];
     } catch (err) {
       state.layersByTag[key] = [];
@@ -405,7 +373,7 @@ type LayerInfo = {
     }
   }
 
-  function updateLayersUI(tagKey: string): void {
+  function updateLayersUI(tagKey) {
     const container = detailEl.querySelector('[data-layer-container="' + CSS.escape(tagKey) + '"]');
     if (!container) {
       return;
@@ -418,8 +386,8 @@ type LayerInfo = {
   }
 
   treeEl.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement | null;
-    const button = target?.closest("button.node") as HTMLButtonElement | null;
+    const target = event.target;
+    const button = target && target.closest ? target.closest("button.node") : null;
     if (!button) {
       return;
     }
@@ -472,8 +440,8 @@ type LayerInfo = {
   });
 
   detailEl.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement | null;
-    const row = target?.closest(".tagrow") as HTMLElement | null;
+    const target = event.target;
+    const row = target && target.closest ? target.closest(".tagrow") : null;
     if (!row) {
       return;
     }

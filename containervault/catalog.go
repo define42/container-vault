@@ -179,7 +179,9 @@ type manifestSchema2 struct {
 		Size int64 `json:"size"`
 	} `json:"config"`
 	Layers []struct {
-		Size int64 `json:"size"`
+		Size      int64  `json:"size"`
+		Digest    string `json:"digest"`
+		MediaType string `json:"mediaType"`
 	} `json:"layers"`
 }
 
@@ -262,4 +264,95 @@ func fetchManifestCompressedSizeByDigest(ctx context.Context, client *http.Clien
 		compressed += layer.Size
 	}
 	return compressed, nil
+}
+
+func fetchTagLayers(ctx context.Context, repo, tag string) ([]layerInfo, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + tag})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", strings.Join([]string{
+		"application/vnd.docker.distribution.manifest.v2+json",
+		"application/vnd.docker.distribution.manifest.list.v2+json",
+		"application/vnd.oci.image.manifest.v1+json",
+		"application/vnd.oci.image.index.v1+json",
+	}, ", "))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("manifest status: %s", resp.Status)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	manifestBody := body
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "manifest.list") || strings.Contains(contentType, "image.index") {
+		var list manifestList
+		if err := json.Unmarshal(body, &list); err != nil {
+			return nil, err
+		}
+		selected := ""
+		for _, manifest := range list.Manifests {
+			if manifest.Platform.OS == "linux" && manifest.Platform.Architecture == "amd64" {
+				selected = manifest.Digest
+				break
+			}
+		}
+		if selected == "" && len(list.Manifests) > 0 {
+			selected = list.Manifests[0].Digest
+		}
+		if selected == "" {
+			return nil, fmt.Errorf("manifest list empty")
+		}
+		manifestBody, err = fetchManifestByDigest(ctx, client, repo, selected)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	var manifest manifestSchema2
+	if err := json.Unmarshal(manifestBody, &manifest); err != nil {
+		return nil, err
+	}
+
+	layers := make([]layerInfo, 0, len(manifest.Layers))
+	for _, layer := range manifest.Layers {
+		layers = append(layers, layerInfo{
+			Digest:    layer.Digest,
+			Size:      layer.Size,
+			MediaType: layer.MediaType,
+		})
+	}
+	return layers, nil
+}
+
+func fetchManifestByDigest(ctx context.Context, client *http.Client, repo, digest string) ([]byte, error) {
+	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + digest})
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", strings.Join([]string{
+		"application/vnd.docker.distribution.manifest.v2+json",
+		"application/vnd.oci.image.manifest.v1+json",
+	}, ", "))
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("manifest status: %s", resp.Status)
+	}
+	return io.ReadAll(resp.Body)
 }
