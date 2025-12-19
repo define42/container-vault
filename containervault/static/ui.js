@@ -22,7 +22,7 @@
     reposByNamespace: {},
     repoLoading: {},
     tagsByRepo: {},
-    layersByTag: {},
+    tagDetailsByTag: {},
     layersLoading: {},
     layersVisible: {},
   };
@@ -321,12 +321,17 @@
     if (state.layersLoading[tagKey]) {
       return '<div class="layers"><div class="mono">Loading layers...</div></div>';
     }
-    const layers = state.layersByTag[tagKey] || [];
+    const details = state.tagDetailsByTag[tagKey];
+    const layers = details ? details.layers || [] : [];
+    const meta = details
+      ? renderMeta(details)
+      : '<div class="meta"><div class="mono">Metadata unavailable.</div></div>';
     if (layers.length === 0) {
-      return '<div class="layers"><div class="mono">No layers found.</div></div>';
+      return '<div class="layers">' + meta + '<div class="mono">No layers found.</div></div>';
     }
     return (
       '<div class="layers">' +
+      meta +
       layers
         .map((layer) => {
           return (
@@ -336,6 +341,9 @@
             "</code>" +
             "<span>" +
             escapeHTML(formatBytes(layer.size)) +
+            "</span>" +
+            "<span>" +
+            escapeHTML(layer.media_type || "") +
             "</span>" +
             "</div>"
           );
@@ -347,7 +355,7 @@
 
   async function loadLayers(repo, tag) {
     const key = repo + ":" + tag;
-    if (state.layersByTag[key]) {
+    if (state.tagDetailsByTag[key]) {
       return;
     }
     state.layersLoading[key] = true;
@@ -358,19 +366,87 @@
       );
       const text = await res.text();
       if (!res.ok) {
-        state.layersByTag[key] = [];
+        state.tagDetailsByTag[key] = emptyTagDetails(repo, tag);
         state.layersLoading[key] = false;
         updateLayersUI(key);
         return;
       }
       const data = JSON.parse(text);
-      state.layersByTag[key] = data.layers || [];
+      state.tagDetailsByTag[key] = data;
     } catch (err) {
-      state.layersByTag[key] = [];
+      state.tagDetailsByTag[key] = emptyTagDetails(repo, tag);
     } finally {
       state.layersLoading[key] = false;
       updateLayersUI(key);
     }
+  }
+
+  function emptyTagDetails(repo, tag) {
+    return {
+      repo,
+      tag,
+      digest: "",
+      media_type: "",
+      schema_version: 0,
+      config: {
+        digest: "",
+        size: 0,
+        media_type: "",
+        created: "",
+        os: "",
+        architecture: "",
+        entrypoint: [],
+        cmd: [],
+        env: [],
+        labels: {},
+        history_count: 0,
+      },
+      layers: [],
+    };
+  }
+
+  function renderMeta(details) {
+    const platforms = (details.platforms || [])
+      .map((p) => p.os + "/" + p.architecture + (p.variant ? "/" + p.variant : ""))
+      .join(", ");
+    const labels = details.config.labels || {};
+    const labelPairs = Object.keys(labels)
+      .sort()
+      .map((k) => k + "=" + labels[k])
+      .join(", ");
+    const env = (details.config.env || []).join(", ");
+    const entrypoint = (details.config.entrypoint || []).join(" ");
+    const cmd = (details.config.cmd || []).join(" ");
+    const osArch = [details.config.os, details.config.architecture].filter(Boolean).join("/");
+    return (
+      '<div class="meta">' +
+      metaRow("Manifest", details.media_type || "unknown") +
+      metaRow("Schema", details.schema_version ? "v" + details.schema_version : "unknown") +
+      metaRow("Digest", details.digest || "unknown") +
+      metaRow("Config Digest", details.config.digest || "unknown") +
+      metaRow("Config Media", details.config.media_type || "unknown") +
+      metaRow("Config Size", formatBytes(details.config.size)) +
+      metaRow("Created", details.config.created || "unknown") +
+      metaRow("OS/Arch", osArch || "unknown") +
+      metaRow("Entrypoint", entrypoint || "none") +
+      metaRow("Cmd", cmd || "none") +
+      metaRow("Env", env || "none") +
+      metaRow("Labels", labelPairs || "none") +
+      metaRow("History Entries", String(details.config.history_count || 0)) +
+      metaRow("Layers", String(details.layers.length || 0)) +
+      metaRow("Platforms", platforms || "single") +
+      "</div>"
+    );
+  }
+
+  function metaRow(label, value) {
+    return (
+      '<div class="meta-row"><span class="meta-key">' +
+      escapeHTML(label) +
+      '</span><span class="meta-value">' +
+      escapeHTML(value || "unknown") +
+      "</span></div>"
+    );
   }
 
   function updateLayersUI(tagKey) {

@@ -128,6 +128,10 @@ const dashboardHTML = `<!doctype html>
     .layers { margin-top:10px; border-top:1px dashed rgba(148,163,184,0.25); padding-top:10px; display:grid; gap:8px; }
     .layer { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#cbd5e1; }
     .layer code { color:#e2e8f0; }
+    .meta { display:grid; gap:6px; margin-bottom:10px; }
+    .meta-row { display:flex; justify-content:space-between; gap:10px; font-size:12px; color:#cbd5e1; }
+    .meta-key { color:var(--muted); }
+    .meta-value { text-align:right; max-width:70%%; word-break:break-word; }
     @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
   </style>
 </head>

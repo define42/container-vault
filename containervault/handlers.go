@@ -297,16 +297,12 @@ func handleTagLayers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	layers, err := fetchTagLayers(r.Context(), repo, tag)
+	details, err := fetchTagDetails(r.Context(), repo, tag)
 	if err != nil {
 		http.Error(w, "registry unavailable", http.StatusBadGateway)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"repo":   repo,
-		"tag":    tag,
-		"layers": layers,
-	})
+	_ = json.NewEncoder(w).Encode(details)
 }

@@ -62,3 +62,34 @@ type layerInfo struct {
 	Size      int64  `json:"size"`
 	MediaType string `json:"media_type"`
 }
+
+type platformInfo struct {
+	OS           string `json:"os"`
+	Architecture string `json:"architecture"`
+	Variant      string `json:"variant,omitempty"`
+}
+
+type configInfo struct {
+	Digest       string            `json:"digest"`
+	Size         int64             `json:"size"`
+	MediaType    string            `json:"media_type"`
+	Created      string            `json:"created"`
+	OS           string            `json:"os"`
+	Architecture string            `json:"architecture"`
+	Entrypoint   []string          `json:"entrypoint"`
+	Cmd          []string          `json:"cmd"`
+	Env          []string          `json:"env"`
+	Labels       map[string]string `json:"labels"`
+	HistoryCount int               `json:"history_count"`
+}
+
+type tagDetails struct {
+	Repo          string         `json:"repo"`
+	Tag           string         `json:"tag"`
+	Digest        string         `json:"digest"`
+	MediaType     string         `json:"media_type"`
+	SchemaVersion int            `json:"schema_version"`
+	Config        configInfo     `json:"config"`
+	Platforms     []platformInfo `json:"platforms,omitempty"`
+	Layers        []layerInfo    `json:"layers"`
+}
