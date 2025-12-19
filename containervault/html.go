@@ -1,0 +1,302 @@
+package main
+
+const landingHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerVault Enterprise</title>
+  <style>
+    :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
+    body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
+      radial-gradient(circle at 20% 20%, rgba(56,189,248,0.15), transparent 40%),
+      radial-gradient(circle at 80% 0%, rgba(14,165,233,0.15), transparent 35%),
+      var(--bg);
+      color:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+    .card { background:linear-gradient(160deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96)); border:1px solid var(--line); border-radius:18px; padding:36px 40px; max-width:720px; width:100%; box-shadow:0 24px 70px rgba(0,0,0,0.4); }
+    h1 { margin:8px 0 12px; font-size:34px; letter-spacing:0.5px; color:var(--accent); }
+    p { margin:8px 0; line-height:1.5; }
+    .tag { display:inline-block; padding:6px 10px; border-radius:999px; background:rgba(56,189,248,0.12); color:#bae6fd; font-size:12px; letter-spacing:0.4px; text-transform:uppercase; }
+    .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; color:#cbd5e1; }
+    a.button { display:inline-block; margin-top:18px; padding:10px 16px; border-radius:10px; background:var(--accent); color:#062238; text-decoration:none; font-weight:600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="tag">Container Registry Proxy</div>
+    <h1>ContainerVault Enterprise</h1>
+    <p>Secure gateway for your private Docker registry with per-namespace access control.</p>
+    <p class="mono">Push &amp; pull via this endpoint:<br> <strong>https://skod.net</strong></p>
+    <p class="mono">Ping: <strong>GET /v2/</strong><br> Namespaced access: <strong>/v2/&lt;team&gt;/...</strong></p>
+    <a class="button" href="/login">Open Login</a>
+  </div>
+</body>
+</html>
+`
+
+const loginHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerVault Enterprise</title>
+  <style>
+    :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
+    body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
+      radial-gradient(circle at 15% 15%, rgba(56,189,248,0.18), transparent 40%),
+      radial-gradient(circle at 85% 5%, rgba(14,165,233,0.12), transparent 35%),
+      var(--bg);
+      color:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
+    .card { background:linear-gradient(160deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96)); border:1px solid var(--line); border-radius:18px; padding:36px 40px; max-width:520px; width:100%; box-shadow:0 24px 70px rgba(0,0,0,0.4); }
+    h1 { margin:0 0 12px; font-size:30px; color:var(--accent); }
+    p { margin:8px 0; line-height:1.5; color:var(--muted); }
+    form { display:grid; gap:14px; margin-top:18px; }
+    label { font-size:13px; color:var(--muted); letter-spacing:0.3px; text-transform:uppercase; }
+    input { background:#0b1224; border:1px solid var(--line); color:#e2e8f0; border-radius:10px; padding:10px 12px; font-size:15px; }
+    button { border:0; border-radius:10px; padding:12px 14px; font-weight:600; background:var(--accent); color:#062238; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>ContainerVault Enterprise</h1>
+    <p>Sign in to see your allowed namespaces and browse repository contents.</p>
+    <form method="post" action="/login">
+      <div>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit">Continue</button>
+    </form>
+  </div>
+</body>
+</html>
+`
+
+const dashboardHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ContainerVault Enterprise</title>
+  <style>
+    :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); --tree:#0b1224; }
+    body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
+      radial-gradient(circle at 10%% 20%%, rgba(56,189,248,0.16), transparent 40%%),
+      radial-gradient(circle at 90%% 0%%, rgba(14,165,233,0.12), transparent 35%%),
+      var(--bg);
+      color:#e2e8f0; min-height:100vh; padding:32px; }
+    h1 { margin:0 0 6px; font-size:28px; color:var(--accent); }
+    p { margin:6px 0 18px; color:var(--muted); }
+    .layout { display:grid; gap:18px; grid-template-columns: 320px 1fr; }
+    .panel { border:1px solid var(--line); border-radius:16px; padding:16px; background:rgba(2,6,23,0.75); }
+    .panel-title { font-size:12px; letter-spacing:0.3px; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+    .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; color:#cbd5e1; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .logout { border:1px solid var(--line); background:#0b1224; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; }
+    .tree { display:flex; flex-direction:column; gap:6px; }
+    .node { width:100%%; text-align:left; border:1px solid var(--line); background:var(--tree); color:#e2e8f0; padding:8px 10px; border-radius:10px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; }
+    .node:hover { border-color:rgba(56,189,248,0.6); }
+    .node.active { border-color:var(--accent); box-shadow:0 0 0 1px rgba(56,189,248,0.2) inset; }
+    .caret { width:16px; height:16px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted); }
+    .branch { margin-left:20px; display:flex; flex-direction:column; gap:6px; }
+    .leaf { border:1px dashed rgba(148,163,184,0.35); background:rgba(15,23,42,0.6); padding:6px 10px; border-radius:10px; font-size:13px; color:#cbd5e1; }
+    .tags { margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; }
+    .tag { padding:6px 10px; border-radius:999px; background:rgba(56,189,248,0.12); color:#bae6fd; font-size:12px; }
+    .ref { color:#cbd5e1; font-size:13px; margin-top:10px; word-break:break-all; }
+    .detail { min-height:220px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div>
+      <h1>ContainerVault Enterprise</h1>
+      <p>Welcome, %s. Expand a namespace to browse repositories and tags.</p>
+    </div>
+    <form method="post" action="/logout">
+      <button class="logout" type="submit">Logout</button>
+    </form>
+  </div>
+  <div class="layout">
+    <div class="panel">
+      <div class="panel-title">Namespace Tree</div>
+      <div id="tree" class="tree"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Details</div>
+      <div id="detailPanel" class="detail mono">Select a repository to view tags.</div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const namespaces = %s;
+      const tree = document.getElementById('tree');
+      const detail = document.getElementById('detailPanel');
+      const state = {
+        expandedNamespace: null,
+        expandedRepo: null,
+        reposByNamespace: {},
+        repoLoading: {},
+        tagsByRepo: {},
+      };
+
+      function escapeHTML(value) {
+        return String(value).replace(/[&<>"']/g, function (ch) {
+          const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+          return map[ch];
+        });
+      }
+
+      function renderTree() {
+        if (!namespaces || namespaces.length === 0) {
+          tree.innerHTML = '<div class="mono">No namespaces assigned.</div>';
+          return;
+        }
+        tree.innerHTML = namespaces.map(function (ns) {
+          const expanded = state.expandedNamespace === ns;
+          const caret = expanded ? '&#9662;' : '&#9656;';
+          const repos = state.reposByNamespace[ns] || [];
+          const repoLoading = state.repoLoading[ns];
+          const repoMarkup = expanded
+            ? '<div class="branch">' + renderRepos(repos, repoLoading) + '</div>'
+            : '';
+          return (
+            '<button class="node' + (expanded ? ' active' : '') + '" data-type="namespace" data-name="' + escapeHTML(ns) + '">' +
+              '<span class="caret">' + caret + '</span>' +
+              '<span>' + escapeHTML(ns) + '</span>' +
+            '</button>' +
+            repoMarkup
+          );
+        }).join('');
+      }
+
+      function renderRepos(repos, loading) {
+        if (loading) {
+          return '<div class="leaf mono">Loading repositories...</div>';
+        }
+        if (!repos || repos.length === 0) {
+          return '<div class="leaf mono">No repositories found.</div>';
+        }
+        return repos.map(function (repo) {
+          const expanded = state.expandedRepo === repo;
+          const caret = expanded ? '&#9662;' : '&#9656;';
+          return (
+            '<button class="node' + (expanded ? ' active' : '') + '" data-type="repo" data-name="' + escapeHTML(repo) + '">' +
+              '<span class="caret">' + caret + '</span>' +
+              '<span>' + escapeHTML(repo) + '</span>' +
+            '</button>'
+          );
+        }).join('');
+      }
+
+      async function loadRepos(namespace) {
+        state.repoLoading[namespace] = true;
+        renderTree();
+        try {
+          const res = await fetch('/api/repos?namespace=' + encodeURIComponent(namespace));
+          const text = await res.text();
+          if (!res.ok) {
+            state.reposByNamespace[namespace] = [];
+            state.repoLoading[namespace] = false;
+            detail.innerHTML = '<div class="mono">' + escapeHTML(text) + '</div>';
+            renderTree();
+            return;
+          }
+          const data = JSON.parse(text);
+          state.reposByNamespace[namespace] = data.repositories || [];
+        } catch (err) {
+          detail.innerHTML = '<div class="mono">Unable to load repositories.</div>';
+        } finally {
+          state.repoLoading[namespace] = false;
+          renderTree();
+        }
+      }
+
+      async function loadTags(repo) {
+        detail.innerHTML = '<div class="mono">Loading tags...</div>';
+        try {
+          const res = await fetch('/api/tags?repo=' + encodeURIComponent(repo));
+          const text = await res.text();
+          if (!res.ok) {
+            state.tagsByRepo[repo] = [];
+            detail.innerHTML = '<div class="mono">' + escapeHTML(text) + '</div>';
+            return;
+          }
+          const data = JSON.parse(text);
+          state.tagsByRepo[repo] = data.tags || [];
+          renderDetail(repo, state.tagsByRepo[repo]);
+        } catch (err) {
+          detail.innerHTML = '<div class="mono">Unable to load tags.</div>';
+        }
+      }
+
+      function renderDetail(repo, tags) {
+        if (!repo) {
+          detail.innerHTML = 'Select a repository to view tags.';
+          return;
+        }
+        const base = window.location.host;
+        const tagHTML = (tags || []).map(function (tag) {
+          return '<span class="tag">' + escapeHTML(tag) + '</span>';
+        }).join('');
+        const refs = (tags || []).map(function (tag) {
+          return base + '/' + repo + ':' + tag;
+        });
+        const refsHTML = refs.length
+          ? '<div class="ref">' + refs.map(escapeHTML).join('<br>') + '</div>'
+          : '<div class="ref">No tags available.</div>';
+        detail.innerHTML =
+          '<div><strong>' + escapeHTML(repo) + '</strong></div>' +
+          '<div class="tags">' + (tagHTML || '<span class="tag">no tags</span>') + '</div>' +
+          refsHTML;
+      }
+
+      tree.addEventListener('click', function (event) {
+        const button = event.target.closest('button.node');
+        if (!button) {
+          return;
+        }
+        const type = button.getAttribute('data-type');
+        const name = button.getAttribute('data-name');
+        if (type === 'namespace') {
+          if (state.expandedNamespace === name) {
+            state.expandedNamespace = null;
+            state.expandedRepo = null;
+            renderTree();
+            return;
+          }
+          state.expandedNamespace = name;
+          state.expandedRepo = null;
+          if (!state.reposByNamespace[name]) {
+            loadRepos(name);
+          } else {
+            renderTree();
+          }
+          return;
+        }
+        if (type === 'repo') {
+          if (state.expandedRepo === name) {
+            state.expandedRepo = null;
+            renderTree();
+            return;
+          }
+          state.expandedRepo = name;
+          renderTree();
+          if (!state.tagsByRepo[name]) {
+            loadTags(name);
+          } else {
+            renderDetail(name, state.tagsByRepo[name]);
+          }
+        }
+      });
+
+      renderTree();
+    })();
+  </script>
+</body>
+</html>
+`

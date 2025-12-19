@@ -13,7 +13,7 @@ COPY go.mod go.sum  ./
 RUN go mod download
 
 # Copy source
-COPY main.go .
+COPY *.go ./
 
 # Build
 RUN go build -o registry-proxy
