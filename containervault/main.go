@@ -823,6 +823,7 @@ const dashboardHTML = `<!doctype html>
     .repo { padding:10px 12px; border-radius:12px; border:1px solid var(--line); background:rgba(15,23,42,0.6); margin-bottom:12px; }
     .repo strong { color:#e2e8f0; }
     .tags { color:var(--muted); font-size:13px; margin-top:6px; }
+    .ref { color:#cbd5e1; font-size:13px; margin-top:6px; word-break:break-all; }
     .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
     .logout { border:1px solid var(--line); background:#0b1224; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; }
     @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
@@ -886,11 +887,19 @@ const dashboardHTML = `<!doctype html>
           panel.innerHTML = '<p class="mono">No repositories found for this namespace.</p>';
           return;
         }
+        const base = window.location.host;
         panel.innerHTML = data.repositories.map(function (repo) {
           const tags = (repo.tags || []).join(', ') || 'no tags';
+          const refs = (repo.tags || []).map(function (tag) {
+            return base + '/' + repo.name + ':' + tag;
+          });
+          const refsHTML = refs.length > 0
+            ? '<div class="ref">' + refs.map(escapeHTML).join('<br>') + '</div>'
+            : '<div class="ref">No tags available.</div>';
           return '<div class="repo">' +
             '<strong>' + escapeHTML(repo.name) + '</strong>' +
             '<div class="tags">' + escapeHTML(tags) + '</div>' +
+            refsHTML +
             '</div>';
         }).join('');
       }
