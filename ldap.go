@@ -88,7 +88,7 @@ func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {
 	if cfg.StartTLS && strings.HasPrefix(cfg.URL, "ldap://") {
 		// #nosec G402 -- skip TLS verification if configured
 		if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			return nil, err
 		}
 	}

@@ -21,7 +21,7 @@ func ensureTLSCert(certPath, keyPath string) error {
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(certPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(certPath), 0o750); err != nil {
 		return err
 	}
 

@@ -52,7 +52,7 @@ func fetchCatalog(ctx context.Context, namespace string) ([]repoInfo, error) {
 			return nil, err
 		}
 		data, err := io.ReadAll(tagResp.Body)
-		tagResp.Body.Close()
+		_ = tagResp.Body.Close()
 		if err != nil {
 			return nil, err
 		}
