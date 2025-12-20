@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func main() {
+func cvRouter() *mux.Router {
 	_ = mime.AddExtensionType(".js", "application/javascript")
 	staticDir := resolveStaticDir()
 
@@ -79,6 +79,12 @@ func main() {
 
 		proxy.ServeHTTP(w, r)
 	})
+	return router
+}
+
+func main() {
+
+	router := cvRouter()
 
 	certPath := "/certs/registry.crt"
 	keyPath := "/certs/registry.key"
