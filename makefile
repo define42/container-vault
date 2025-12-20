@@ -1,7 +1,11 @@
 all:
 	docker compose build
 
+lint:
+	go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run
 test:
+	go test 
+run:
 	docker compose down
 	docker compose build
 	docker compose up -d
