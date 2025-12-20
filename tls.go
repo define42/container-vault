@@ -60,7 +60,7 @@ func generateSelfSigned(certPath, keyPath string) error {
 	}
 
 	certOut := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	if err := os.WriteFile(certPath, certOut, 0o644); err != nil {
+	if err := os.WriteFile(certPath, certOut, 0o600); err != nil {
 		return err
 	}
 

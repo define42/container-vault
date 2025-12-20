@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -105,12 +106,14 @@ func main() {
 	}
 
 	log.Println("listening on :8443")
-	log.Fatal(http.ListenAndServeTLS(
-		":8443",
-		certPath,
-		keyPath,
-		handler,
-	))
+	server := &http.Server{
+		Addr:         ":8443",
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	log.Fatal(server.ListenAndServeTLS(certPath, keyPath))
 }
 
 func resolveStaticDir() string {

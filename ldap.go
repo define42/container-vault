@@ -78,12 +78,15 @@ func ldapAuthenticateAccess(username, password string) (*User, []Access, error) 
 }
 
 func dialLDAP(cfg LDAPConfig) (*ldap.Conn, error) {
+
+	// #nosec G402 -- skip TLS verification if configured
 	conn, err := ldap.DialURL(cfg.URL, ldap.DialWithTLSConfig(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}))
 	if err != nil {
 		return nil, err
 	}
 
 	if cfg.StartTLS && strings.HasPrefix(cfg.URL, "ldap://") {
+		// #nosec G402 -- skip TLS verification if configured
 		if err := conn.StartTLS(&tls.Config{InsecureSkipVerify: cfg.SkipTLSVerify}); err != nil {
 			conn.Close()
 			return nil, err

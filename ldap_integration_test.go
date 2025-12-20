@@ -237,7 +237,7 @@ func addDockerTrust(t *testing.T, configDir, registry, certPath string) {
 		t.Fatalf("mk cert dir: %v", err)
 	}
 	dest := filepath.Join(configDir, "certs.d", registry, "ca.crt")
-	if err := os.WriteFile(dest, data, 0o644); err != nil {
+	if err := os.WriteFile(dest, data, 0o600); err != nil {
 		t.Fatalf("write ca: %v", err)
 	}
 }
