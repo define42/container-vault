@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -165,6 +167,36 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	if badUserResp.StatusCode != http.StatusUnauthorized {
 		body, _ := io.ReadAll(badUserResp.Body)
 		t.Fatalf("expected 401 for bad username, got %d: %s", badUserResp.StatusCode, string(body))
+	}
+
+	form := url.Values{}
+	form.Set("username", "hackers")
+	form.Set("password", "dogood")
+	loginReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/login", strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("new login request: %v", err)
+	}
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	loginResp, err := loginClient.Do(loginReq)
+	if err != nil {
+		t.Fatalf("do login request: %v", err)
+	}
+	defer loginResp.Body.Close()
+	if loginResp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(loginResp.Body)
+		t.Fatalf("expected 303 for login, got %d: %s", loginResp.StatusCode, string(body))
+	}
+	if loc := loginResp.Header.Get("Location"); loc != "/api/dashboard" {
+		t.Fatalf("expected redirect to /api/dashboard, got %q", loc)
+	}
+	if !strings.Contains(loginResp.Header.Get("Set-Cookie"), "cv_session=") {
+		t.Fatalf("expected session cookie on login")
 	}
 }
 
