@@ -15,3 +15,7 @@ run:
 
 delete:
 	skopeo delete   --creds alice:secretpassword   --tls-verify=false   docker://skod.net/team1/registry:2
+cover:
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out -o coverage.html
+	firefox coverage.html
