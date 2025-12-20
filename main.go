@@ -38,7 +38,6 @@ func main() {
 	apiUnauthorized := func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}
-	apiDashboard := requireSession(serveDashboard, apiUnauthorized)
 
 	router := mux.NewRouter()
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
@@ -58,7 +57,7 @@ func main() {
 	router.HandleFunc("/logout", handleLogout)
 	api := router.PathPrefix("/api/").Subrouter()
 	api.Use(requireSessionMiddleware(apiUnauthorized))
-	api.Handle("/dashboard", apiDashboard).Methods(http.MethodGet)
+	api.HandleFunc("/dashboard", serveDashboard).Methods(http.MethodGet)
 	api.HandleFunc("/catalog", handleCatalog)
 	api.HandleFunc("/repos", handleRepos)
 	api.HandleFunc("/tags", handleTags)
@@ -97,20 +96,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 	log.Fatal(server.ListenAndServeTLS(certPath, keyPath))
-}
-
-func requireSession(next http.HandlerFunc, onFail http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := getSession(r); !ok {
-			if onFail != nil {
-				onFail(w, r)
-				return
-			}
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
-		next(w, r)
-	}
 }
 
 func requireSessionMiddleware(onFail http.HandlerFunc) mux.MiddlewareFunc {
