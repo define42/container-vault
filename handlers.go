@@ -9,12 +9,6 @@ import (
 	"strings"
 )
 
-func serveLanding(w http.ResponseWriter) {
-	setNoCacheHeaders(w)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(w, landingHTML)
-}
-
 func extractCredentials(r *http.Request) (string, string, bool, error) {
 	username, password, ok := r.BasicAuth()
 	if ok && username != "" && password != "" {

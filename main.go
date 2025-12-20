@@ -38,7 +38,7 @@ func main() {
 		}
 
 		if r.Method == http.MethodGet && r.URL.Path == "/" {
-			serveLanding(w)
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
 			return
 		}
 

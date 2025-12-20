@@ -1,39 +1,5 @@
 package main
 
-const landingHTML = `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ContainerVault Enterprise</title>
-  <style>
-    :root { --bg:#0b1224; --panel:#0f172a; --accent:#38bdf8; --muted:#94a3b8; --line:rgba(255,255,255,0.1); }
-    body { margin:0; font-family: "Space Grotesk", "Segoe UI", sans-serif; background:
-      radial-gradient(circle at 20% 20%, rgba(56,189,248,0.15), transparent 40%),
-      radial-gradient(circle at 80% 0%, rgba(14,165,233,0.15), transparent 35%),
-      var(--bg);
-      color:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:24px; }
-    .card { background:linear-gradient(160deg, rgba(15,23,42,0.96), rgba(2,6,23,0.96)); border:1px solid var(--line); border-radius:18px; padding:36px 40px; max-width:720px; width:100%; box-shadow:0 24px 70px rgba(0,0,0,0.4); }
-    h1 { margin:8px 0 12px; font-size:34px; letter-spacing:0.5px; color:var(--accent); }
-    p { margin:8px 0; line-height:1.5; }
-    .tag { display:inline-block; padding:6px 10px; border-radius:999px; background:rgba(56,189,248,0.12); color:#bae6fd; font-size:12px; letter-spacing:0.4px; text-transform:uppercase; }
-    .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; color:#cbd5e1; }
-    a.button { display:inline-block; margin-top:18px; padding:10px 16px; border-radius:10px; background:var(--accent); color:#062238; text-decoration:none; font-weight:600; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="tag">Container Registry Proxy</div>
-    <h1>ContainerVault Enterprise</h1>
-    <p>Secure gateway for your private Docker registry with per-namespace access control.</p>
-    <p class="mono">Push &amp; pull via this endpoint:<br> <strong>https://skod.net</strong></p>
-    <p class="mono">Ping: <strong>GET /v2/</strong><br> Namespaced access: <strong>/v2/&lt;team&gt;/...</strong></p>
-    <a class="button" href="/login">Open Login</a>
-  </div>
-</body>
-</html>
-`
-
 const loginHTML = `<!doctype html>
 <html lang="en">
 <head>
