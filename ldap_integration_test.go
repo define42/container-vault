@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -86,6 +89,83 @@ func TestProxyPushPullViaDocker(t *testing.T) {
 	dockerPull(t, dockerConfig, target)
 
 	_ = registryHost
+}
+
+func TestCvRouterProxyWithLDAP(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	ldapURL, stopLDAP := startGlauth(ctx, t, "")
+	defer stopLDAP()
+
+	registryHost, stopRegistry := startRegistry(ctx, t, "")
+	defer stopRegistry()
+
+	t.Setenv("LDAP_URL", ldapURL)
+	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
+	t.Setenv("LDAP_STARTTLS", "false")
+	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
+	prevCfg := ldapCfg
+	ldapCfg = loadLDAPConfig()
+	t.Cleanup(func() {
+		ldapCfg = prevCfg
+	})
+
+	prevUpstream := upstream
+	upstream = mustParse("http://" + registryHost)
+	t.Cleanup(func() {
+		upstream = prevUpstream
+	})
+
+	server := httptest.NewServer(cvRouter())
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.SetBasicAuth("hackers", "dogood")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
+	}
+
+	badReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	badReq.SetBasicAuth("hackers", "wrongpass")
+	badResp, err := client.Do(badReq)
+	if err != nil {
+		t.Fatalf("do bad request: %v", err)
+	}
+	defer badResp.Body.Close()
+	if badResp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(badResp.Body)
+		t.Fatalf("expected 401 for bad password, got %d: %s", badResp.StatusCode, string(body))
+	}
+
+	badUserReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/something", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	badUserReq.SetBasicAuth("wronguser", "dogood")
+	badUserResp, err := client.Do(badUserReq)
+	if err != nil {
+		t.Fatalf("do bad user request: %v", err)
+	}
+	defer badUserResp.Body.Close()
+	if badUserResp.StatusCode != http.StatusUnauthorized {
+		body, _ := io.ReadAll(badUserResp.Body)
+		t.Fatalf("expected 401 for bad username, got %d: %s", badUserResp.StatusCode, string(body))
+	}
 }
 
 func startGlauth(ctx context.Context, t *testing.T, network string) (string, func()) {
