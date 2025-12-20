@@ -54,7 +54,7 @@ func main() {
 			return
 		}
 
-		if r.Method == http.MethodGet && r.URL.Path == "/dashboard" {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/dashboard" {
 			serveDashboard(w, r)
 			return
 		}

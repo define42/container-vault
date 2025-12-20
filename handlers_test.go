@@ -97,7 +97,7 @@ func TestHandleLogoutMethodNotAllowed(t *testing.T) {
 
 func TestServeDashboardUnauthorized(t *testing.T) {
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/dashboard", nil)
 	serveDashboard(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303, got %d", rec.Code)
@@ -110,7 +110,7 @@ func TestServeDashboardUnauthorized(t *testing.T) {
 func TestServeDashboardOK(t *testing.T) {
 	token := seedSession(t, "alice", []string{"team1", "team2"})
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/dashboard", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
 	serveDashboard(rec, req)
 	if rec.Code != http.StatusOK {

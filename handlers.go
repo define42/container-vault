@@ -56,7 +56,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		})
-		http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+		http.Redirect(w, r, "/api/dashboard", http.StatusSeeOther)
 		return
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
