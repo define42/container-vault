@@ -81,6 +81,7 @@ type configInfo struct {
 	Env          []string          `json:"env"`
 	Labels       map[string]string `json:"labels"`
 	HistoryCount int               `json:"history_count"`
+	History      []historyInfo     `json:"history"`
 }
 
 type tagDetails struct {
@@ -92,4 +93,9 @@ type tagDetails struct {
 	Config        configInfo     `json:"config"`
 	Platforms     []platformInfo `json:"platforms,omitempty"`
 	Layers        []layerInfo    `json:"layers"`
+}
+
+type historyInfo struct {
+	CreatedBy  string `json:"created_by"`
+	EmptyLayer bool   `json:"empty_layer,omitempty"`
 }

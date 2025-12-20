@@ -10,6 +10,7 @@ import (
 )
 
 func serveLanding(w http.ResponseWriter) {
+	setNoCacheHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, landingHTML)
 }
@@ -33,6 +34,7 @@ func extractCredentials(r *http.Request) (string, string, bool, error) {
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
+		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, loginHTML)
 		return
@@ -85,8 +87,15 @@ func serveDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setNoCacheHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, dashboardHTML, html.EscapeString(sess.User.Name), string(bootstrapJSON))
+}
+
+func setNoCacheHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {

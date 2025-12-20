@@ -279,7 +279,10 @@ type imageConfig struct {
 		Env        []string          `json:"Env"`
 		Labels     map[string]string `json:"Labels"`
 	} `json:"config"`
-	History []struct{} `json:"history"`
+	History []struct {
+		CreatedBy  string `json:"created_by"`
+		EmptyLayer bool   `json:"empty_layer"`
+	} `json:"history"`
 }
 
 func fetchTagDetails(ctx context.Context, repo, tag string) (tagDetails, error) {
@@ -439,5 +442,14 @@ func fetchConfigInfo(ctx context.Context, client *http.Client, repo string, mani
 	info.Env = cfg.Config.Env
 	info.Labels = cfg.Config.Labels
 	info.HistoryCount = len(cfg.History)
+	if len(cfg.History) > 0 {
+		info.History = make([]historyInfo, 0, len(cfg.History))
+		for _, entry := range cfg.History {
+			info.History = append(info.History, historyInfo{
+				CreatedBy:  entry.CreatedBy,
+				EmptyLayer: entry.EmptyLayer,
+			})
+		}
+	}
 	return info, nil
 }

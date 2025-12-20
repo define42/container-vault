@@ -26,6 +26,7 @@ type TagDetails = {
     env: string[];
     labels: Record<string, string>;
     history_count: number;
+    history: HistoryEntry[];
   };
   platforms?: { os: string; architecture: string; variant?: string }[];
   layers: LayerInfo[];
@@ -47,6 +48,11 @@ type LayerInfo = {
   digest: string;
   size: number;
   media_type: string;
+};
+
+type HistoryEntry = {
+  created_by: string;
+  empty_layer?: boolean;
 };
 
 (function initDashboard() {
@@ -292,7 +298,10 @@ type LayerInfo = {
           '<span class="tagname">' +
           escapeHTML(tag) +
           "</span>" +
+          '<span class="tagstats">' +
           '<span class="stat">loading...</span>' +
+          "</span>" +
+          '<button class="details-toggle" type="button" aria-expanded="false">Details</button>' +
           "</div>" +
           '<div class="ref">' +
           escapeHTML(base + "/" + repo + ":" + tag) +
@@ -352,6 +361,9 @@ type LayerInfo = {
     if (!row) {
       return;
     }
+    const repo = row.getAttribute("data-repo") || "";
+    const key = repo ? repo + ":" + tag : tag;
+    const isVisible = Boolean(state.layersVisible[key]);
     const digest = data.digest ? data.digest : "unknown digest";
     const compressed = formatBytes(data.compressed_size);
     const header = row.querySelector(".tagrow-header");
@@ -369,7 +381,12 @@ type LayerInfo = {
       '<span class="stat mono">' +
       escapeHTML(digest) +
       "</span>" +
-      "</span>";
+      "</span>" +
+      '<button class="details-toggle" type="button" aria-expanded="' +
+      (isVisible ? "true" : "false") +
+      '">' +
+      (isVisible ? "Hide details" : "Details") +
+      "</button>";
   }
 
   function renderLayers(tagKey: string): string {
@@ -381,24 +398,42 @@ type LayerInfo = {
     const meta = details
       ? renderMeta(details)
       : '<div class="meta"><div class="mono">Metadata unavailable.</div></div>';
+    const history = details ? details.config.history || [] : [];
+    const historyByLayerIndex = buildLayerHistory(history);
     if (layers.length === 0) {
       return '<div class="layers">' + meta + '<div class="mono">No layers found.</div></div>';
     }
+    const header =
+      '<div class="layer layer-header">' +
+      "<span>#</span>" +
+      "<span>Digest</span>" +
+      "<span>Size</span>" +
+      "<span>Media Type</span>" +
+      "<span>History</span>" +
+      "</div>";
     return (
       '<div class="layers">' +
       meta +
+      header +
       layers
-        .map((layer) => {
+        .map((layer, index) => {
+          const historyText = historyByLayerIndex[index] || "n/a";
           return (
             '<div class="layer">' +
-            '<code>' +
+            '<span class="layer-index">' +
+            escapeHTML(String(index + 1)) +
+            "</span>" +
+            '<code class="layer-digest">' +
             escapeHTML(layer.digest) +
             "</code>" +
             "<span>" +
             escapeHTML(formatBytes(layer.size)) +
             "</span>" +
             "<span>" +
-            escapeHTML(layer.media_type || "") +
+            escapeHTML(layer.media_type || "unknown") +
+            "</span>" +
+            '<span class="layer-history">' +
+            escapeHTML(historyText) +
             "</span>" +
             "</div>"
           );
@@ -455,9 +490,88 @@ type LayerInfo = {
         env: [],
         labels: {},
         history_count: 0,
+        history: [],
       },
       layers: [],
     };
+  }
+
+  function renderHistory(details: TagDetails): string {
+    const history = details.config.history || [];
+    const entries = history
+      .map((entry) => formatHistoryEntry(entry))
+      .filter((entry) => entry !== null);
+    if (entries.length === 0) {
+      return '<div class="history"><div class="mono">No RUN/COPY/ADD history available.</div></div>';
+    }
+    return (
+      '<div class="history">' +
+      '<div class="history-title">History (RUN/COPY/ADD)</div>' +
+      entries
+        .map((entry, index) => {
+          return (
+            '<div class="history-row">' +
+            '<span class="history-index">' +
+            escapeHTML(String(index + 1)) +
+            "</span>" +
+            '<span class="history-kind">' +
+            escapeHTML(entry.kind) +
+            "</span>" +
+            '<span class="history-command">' +
+            escapeHTML(entry.command) +
+            "</span>" +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function buildLayerHistory(history: HistoryEntry[]): Record<number, string> {
+    const mapping: Record<number, string> = {};
+    let layerIndex = 0;
+    history.forEach((entry) => {
+      if (entry.empty_layer) {
+        return;
+      }
+      const formatted = formatHistoryEntry(entry);
+      if (formatted) {
+        mapping[layerIndex] = formatted.kind + ": " + formatted.command;
+      } else {
+        const raw = (entry.created_by || "").trim();
+        if (raw) {
+          mapping[layerIndex] = raw;
+        }
+      }
+      layerIndex += 1;
+    });
+    return mapping;
+  }
+
+  function formatHistoryEntry(
+    entry: HistoryEntry,
+  ): { kind: "RUN" | "COPY" | "ADD"; command: string } | null {
+    const raw = (entry.created_by || "").trim();
+    if (!raw) {
+      return null;
+    }
+    const nopPrefix = "#(nop) ";
+    const cleaned = raw.startsWith(nopPrefix) ? raw.slice(nopPrefix.length).trim() : raw;
+    if (cleaned.startsWith("COPY ")) {
+      return { kind: "COPY", command: cleaned };
+    }
+    if (cleaned.startsWith("ADD ")) {
+      return { kind: "ADD", command: cleaned };
+    }
+    const shellPrefix = "/bin/sh -c ";
+    if (raw.startsWith(shellPrefix)) {
+      return { kind: "RUN", command: raw.slice(shellPrefix.length).trim() || raw };
+    }
+    if (cleaned.startsWith("RUN ")) {
+      return { kind: "RUN", command: cleaned };
+    }
+    return null;
   }
 
   function renderMeta(details: TagDetails): string {
@@ -473,6 +587,7 @@ type LayerInfo = {
     const entrypoint = (details.config.entrypoint || []).join(" ");
     const cmd = (details.config.cmd || []).join(" ");
     const osArch = [details.config.os, details.config.architecture].filter(Boolean).join("/");
+    const layerTotal = (details.layers || []).reduce((sum, layer) => sum + (layer.size || 0), 0);
     return (
       '<div class="meta">' +
       metaRow("Manifest", details.media_type || "unknown") +
@@ -489,6 +604,7 @@ type LayerInfo = {
       metaRow("Labels", labelPairs || "none") +
       metaRow("History Entries", String(details.config.history_count || 0)) +
       metaRow("Layers", String(details.layers.length || 0)) +
+      metaRow("Layer Total", formatBytes(layerTotal)) +
       metaRow("Platforms", platforms || "single") +
       "</div>"
     );
@@ -570,12 +686,7 @@ type LayerInfo = {
     }
   });
 
-  detailEl.addEventListener("click", (event) => {
-    const target = event.target as HTMLElement | null;
-    const row = target?.closest(".tagrow") as HTMLElement | null;
-    if (!row) {
-      return;
-    }
+  function toggleDetails(row: HTMLElement): void {
     const tag = row.getAttribute("data-tag");
     const repo = row.getAttribute("data-repo");
     if (!tag || !repo) {
@@ -591,9 +702,23 @@ type LayerInfo = {
         container.innerHTML = "";
       }
     }
+    const toggleButton = row.querySelector(".details-toggle");
+    if (toggleButton) {
+      toggleButton.textContent = state.layersVisible[key] ? "Hide details" : "Details";
+      toggleButton.setAttribute("aria-expanded", state.layersVisible[key] ? "true" : "false");
+    }
     if (state.layersVisible[key]) {
       loadLayers(repo, tag);
     }
+  }
+
+  detailEl.addEventListener("click", (event) => {
+    const target = event.target as HTMLElement | null;
+    const row = target?.closest(".tagrow") as HTMLElement | null;
+    if (!row) {
+      return;
+    }
+    toggleDetails(row);
   });
 
   renderTree();

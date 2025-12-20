@@ -32,6 +32,7 @@ func main() {
 			if strings.HasSuffix(path, ".js") {
 				w.Header().Set("Content-Type", "application/javascript")
 			}
+			setNoCacheHeaders(w)
 			http.ServeFile(w, r, filepath.Join(staticDir, path))
 			return
 		}
