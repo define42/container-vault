@@ -129,11 +129,6 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleCatalog(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := getSession(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -170,11 +165,6 @@ func namespaceAllowed(allowed []string, namespace string) bool {
 }
 
 func handleRepos(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := getSession(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -201,11 +191,6 @@ func handleRepos(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTags(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := getSession(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -243,11 +228,6 @@ func handleTags(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTagInfo(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := getSession(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -283,11 +263,6 @@ func handleTagInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleTagLayers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	sess, ok := getSession(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)

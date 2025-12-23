@@ -61,11 +61,11 @@ func cvRouter() *mux.Router {
 	api := router.PathPrefix("/api/").Subrouter()
 	api.Use(requireSessionMiddleware(apiUnauthorized))
 	api.HandleFunc("/dashboard", serveDashboard).Methods(http.MethodGet)
-	api.HandleFunc("/catalog", handleCatalog)
-	api.HandleFunc("/repos", handleRepos)
-	api.HandleFunc("/tags", handleTags)
-	api.HandleFunc("/taginfo", handleTagInfo)
-	api.HandleFunc("/taglayers", handleTagLayers)
+	api.HandleFunc("/catalog", handleCatalog).Methods(http.MethodGet)
+	api.HandleFunc("/repos", handleRepos).Methods(http.MethodGet)
+	api.HandleFunc("/tags", handleTags).Methods(http.MethodGet)
+	api.HandleFunc("/taginfo", handleTagInfo).Methods(http.MethodGet)
+	api.HandleFunc("/taglayers", handleTagLayers).Methods(http.MethodGet)
 
 	router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		user, ok := authenticate(w, r)
