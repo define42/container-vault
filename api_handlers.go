@@ -316,15 +316,15 @@ func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutp
 		return nil, huma.Error403Forbidden("delete not allowed")
 	}
 
-	info, err := fetchTagInfo(ctx, repo, tag)
+	digest, err := fetchTagDigest(ctx, repo, tag)
 	if err != nil {
 		return nil, huma.Error502BadGateway("registry unavailable")
 	}
-	if info.Digest == "" {
+	if digest == "" {
 		return nil, huma.Error502BadGateway("manifest digest missing")
 	}
 
-	if err := deleteManifest(ctx, repo, info.Digest); err != nil {
+	if err := deleteManifest(ctx, repo, digest); err != nil {
 		if regErr, ok := err.(registryError); ok {
 			if regErr.Status == http.StatusNotFound {
 				return nil, huma.Error404NotFound("tag not found")

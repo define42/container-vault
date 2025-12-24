@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const manifestAcceptHeader = "application/vnd.docker.distribution.manifest.v2+json," +
+	"application/vnd.docker.distribution.manifest.list.v2+json," +
+	"application/vnd.oci.image.manifest.v1+json," +
+	"application/vnd.oci.image.index.v1+json"
+
 func fetchCatalog(ctx context.Context, namespace string) ([]repoInfo, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 
@@ -131,6 +136,32 @@ func fetchTags(ctx context.Context, repo string) ([]string, error) {
 	return tags.Tags, nil
 }
 
+func fetchTagDigest(ctx context.Context, repo, tag string) (string, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + tag})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, manifestURL.String(), nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", manifestAcceptHeader)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("manifest status: %s", resp.Status)
+	}
+
+	digest := resp.Header.Get("Docker-Content-Digest")
+	if digest == "" {
+		return "", fmt.Errorf("manifest digest missing")
+	}
+	return digest, nil
+}
+
 func fetchTagInfo(ctx context.Context, repo, tag string) (tagInfo, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + tag})
@@ -139,12 +170,7 @@ func fetchTagInfo(ctx context.Context, repo, tag string) (tagInfo, error) {
 	if err != nil {
 		return tagInfo{}, err
 	}
-	req.Header.Set("Accept", strings.Join([]string{
-		"application/vnd.docker.distribution.manifest.v2+json",
-		"application/vnd.docker.distribution.manifest.list.v2+json",
-		"application/vnd.oci.image.manifest.v1+json",
-		"application/vnd.oci.image.index.v1+json",
-	}, ", "))
+	req.Header.Set("Accept", manifestAcceptHeader)
 
 	resp, err := client.Do(req)
 	if err != nil {

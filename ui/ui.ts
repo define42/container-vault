@@ -842,7 +842,13 @@ type HistoryEntry = {
     if (!canDeleteRepo(repo)) {
       return;
     }
-    if (!window.confirm("Delete " + repo + ":" + tag + "?")) {
+    const warning =
+      "Delete " +
+      repo +
+      ":" +
+      tag +
+      "?\n\nNote: tags in this repository that share the same digest will also be deleted.";
+    if (!window.confirm(warning)) {
       return;
     }
     const originalLabel = button.textContent || "Delete";
@@ -866,13 +872,14 @@ type HistoryEntry = {
         return;
       }
 
-      const tags = state.tagsByRepo[repo] || [];
-      state.tagsByRepo[repo] = tags.filter((entry) => entry !== tag);
       const key = repo + ":" + tag;
       delete state.tagDetailsByTag[key];
       delete state.layersVisible[key];
       delete state.layersLoading[key];
-      renderDetail(repo, state.tagsByRepo[repo]);
+      delete state.tagsByRepo[repo];
+      if (state.expandedRepo === repo) {
+        loadTags(repo);
+      }
     } catch (err) {
       button.textContent = "Failed";
       window.setTimeout(() => {

@@ -336,20 +336,11 @@ func TestHandleTagDeleteSuccess(t *testing.T) {
 	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v2/team1/app/manifests/v1":
-			if r.Method != http.MethodGet {
+			if r.Method != http.MethodHead {
 				http.NotFound(w, r)
 				return
 			}
-			w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.v2+json")
 			w.Header().Set("Docker-Content-Digest", "sha256:abc")
-			_, _ = w.Write([]byte(`{
-  "schemaVersion": 2,
-  "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
-  "config": { "size": 2, "digest": "sha256:cfg", "mediaType": "application/vnd.docker.container.image.v1+json" },
-  "layers": [
-    { "size": 3, "digest": "sha256:a", "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip" }
-  ]
-}`))
 		case "/v2/team1/app/manifests/sha256:abc":
 			if r.Method != http.MethodDelete {
 				http.NotFound(w, r)
