@@ -3,7 +3,10 @@
 ContainerVault is a Go-based private registry proxy with LDAP authentication and a web dashboard for browsing namespaces, repositories, tags, and image details.
 
 ## Codecov
-[![codecov](https://codecov.io/github/define42/ContainerVault/graph/badge.svg?token=CFBGGOI5OM)](https://codecov.io/github/define42/ContainerVault)
+[![codecov](https://codecov.io/github/define42/container-vault/graph/badge.svg?token=CFBGGOI5OM)](https://codecov.io/github/define42/container-vault)
+
+## Go Report Card
+[![Go Report Card](https://goreportcard.com/badge/github.com/define42/container-vault)](https://goreportcard.com/report/github.com/define42/container-vault)
 
 ## Features
 - LDAP login with namespace-scoped access control.
