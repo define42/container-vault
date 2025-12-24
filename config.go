@@ -23,7 +23,7 @@ func loadLDAPConfig() LDAPConfig {
 	return LDAPConfig{
 		URL:             getEnv("LDAP_URL", "ldaps://ldap:389"),
 		BaseDN:          getEnv("LDAP_BASE_DN", "dc=glauth,dc=com"),
-		UserFilter:      getEnv("LDAP_USER_FILTER", "(uid=%s)"),
+		UserFilter:      getEnv("LDAP_USER_FILTER", "(mail=%s)"),
 		GroupAttribute:  getEnv("LDAP_GROUP_ATTRIBUTE", "memberOf"),
 		GroupNamePrefix: getEnv("LDAP_GROUP_PREFIX", "team"),
 		UserMailDomain:  getEnv("LDAP_USER_DOMAIN", "@example.com"),

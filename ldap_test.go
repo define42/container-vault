@@ -38,3 +38,33 @@ func TestPermissionsFromGroupSuffixes(t *testing.T) {
 		})
 	}
 }
+
+func TestMorePermissivePullOnly(t *testing.T) {
+	tests := []struct {
+		name string
+		a    User
+		b    User
+		want bool
+	}{
+		{
+			name: "a write b pull-only",
+			a:    User{PullOnly: false, DeleteAllowed: false},
+			b:    User{PullOnly: true, DeleteAllowed: false},
+			want: true,
+		},
+		{
+			name: "a pull-only b write",
+			a:    User{PullOnly: true, DeleteAllowed: false},
+			b:    User{PullOnly: false, DeleteAllowed: false},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := morePermissive(&tt.a, &tt.b); got != tt.want {
+				t.Fatalf("expected %v, got %v", tt.want, got)
+			}
+		})
+	}
+}

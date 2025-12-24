@@ -48,7 +48,8 @@ func ldapAuthenticateAccess(username, password string) (*User, []Access, error) 
 		return nil, nil, fmt.Errorf("ldap bind failed: %w", bindErr)
 	}
 
-	filter := fmt.Sprintf(ldapCfg.UserFilter, username)
+	filter := fmt.Sprintf(ldapCfg.UserFilter, mail)
+	fmt.Println("filter", filter)
 	searchReq := ldap.NewSearchRequest(
 		ldapCfg.BaseDN,
 		ldap.ScopeWholeSubtree,
@@ -69,6 +70,8 @@ func ldapAuthenticateAccess(username, password string) (*User, []Access, error) 
 	entry := sr.Entries[0]
 
 	groups := entry.GetAttributeValues(ldapCfg.GroupAttribute)
+	fmt.Println("groups for", username, ":", groups)
+	fmt.Println(groups)
 	access, user := accessFromGroups(username, groups, ldapCfg.GroupNamePrefix)
 	if user == nil {
 		return nil, nil, fmt.Errorf("no authorized groups for %s", username)

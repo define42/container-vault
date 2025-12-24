@@ -19,3 +19,6 @@ cover:
 	go test ./... -coverprofile=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	firefox coverage.html
+ldaptest:
+	DAPTLS_REQCERT=never ldapsearch -x   -H ldaps://localhost:389 -D "cn=johndoe,ou=,ou=users,dc=glauth,dc=com" -w dogood -b  "dc=glauth,dc=com" "(cn=johndoe)"
+
