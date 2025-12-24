@@ -16,7 +16,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-
 var proxyTransport http.RoundTripper = http.DefaultTransport
 
 func cvRouter() http.Handler {
