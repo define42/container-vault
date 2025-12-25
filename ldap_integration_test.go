@@ -162,80 +162,62 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	server := httptest.NewServer(cvRouter())
 	defer server.Close()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.SetBasicAuth("hackers", "dogood")
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("do request: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, string(body))
-	}
-
-	forbiddenReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/something", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	forbiddenReq.SetBasicAuth("hackers", "dogood")
-	forbiddenResp, err := client.Do(forbiddenReq)
-	if err != nil {
-		t.Fatalf("do forbidden request: %v", err)
-	}
-	defer forbiddenResp.Body.Close()
-	if forbiddenResp.StatusCode != http.StatusForbidden {
-		body, _ := io.ReadAll(forbiddenResp.Body)
-		t.Fatalf("expected 403 for wrong namespace, got %d: %s", forbiddenResp.StatusCode, string(body))
+	doRequest := func(client *http.Client, method, path, user, pass string, body io.Reader, headers map[string]string) (int, string) {
+		t.Helper()
+		req, err := http.NewRequestWithContext(ctx, method, server.URL+path, body)
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		for key, value := range headers {
+			req.Header.Set(key, value)
+		}
+		if user != "" || pass != "" {
+			req.SetBasicAuth(user, pass)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("do request: %v", err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(data)
 	}
 
-	noAuthReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/dashboard", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
+	accessCases := []struct {
+		name       string
+		method     string
+		path       string
+		user       string
+		pass       string
+		wantStatus int
+	}{
+		{"ping", http.MethodGet, "/v2/", "hackers", "dogood", http.StatusOK},
+		{"wrong namespace", http.MethodGet, "/v2/something", "hackers", "dogood", http.StatusForbidden},
+		{"dashboard without auth", http.MethodGet, "/dashboard", "", "", http.StatusUnauthorized},
+		{"bad password", http.MethodGet, "/v2/", "hackers", "wrongpass", http.StatusUnauthorized},
+		{"bad user", http.MethodGet, "/v2/something", "wronguser", "dogood", http.StatusUnauthorized},
+		{"empty password", http.MethodGet, "/v2/", "hackers", "", http.StatusUnauthorized},
+		{"empty username and password", http.MethodGet, "/v2/", "", "", http.StatusUnauthorized},
+		{"empty password", http.MethodGet, "/v2/", "", "dogood", http.StatusUnauthorized},
 	}
-	noAuthResp, err := client.Do(noAuthReq)
-	if err != nil {
-		t.Fatalf("do no-auth request: %v", err)
-	}
-	defer noAuthResp.Body.Close()
-	if noAuthResp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(noAuthResp.Body)
-		t.Fatalf("expected 401 for /dashboard without auth, got %d: %s", noAuthResp.StatusCode, string(body))
-	}
-
-	badReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	badReq.SetBasicAuth("hackers", "wrongpass")
-	badResp, err := client.Do(badReq)
-	if err != nil {
-		t.Fatalf("do bad request: %v", err)
-	}
-	defer badResp.Body.Close()
-	if badResp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(badResp.Body)
-		t.Fatalf("expected 401 for bad password, got %d: %s", badResp.StatusCode, string(body))
+	for _, tc := range accessCases {
+		status, body := doRequest(client, tc.method, tc.path, tc.user, tc.pass, nil, nil)
+		if status != tc.wantStatus {
+			t.Fatalf("expected %d for %s, got %d: %s", tc.wantStatus, tc.name, status, body)
+		}
 	}
 
-	badUserReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/something", nil)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
+	loginClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
-	badUserReq.SetBasicAuth("wronguser", "dogood")
-	badUserResp, err := client.Do(badUserReq)
-	if err != nil {
-		t.Fatalf("do bad user request: %v", err)
-	}
-	defer badUserResp.Body.Close()
-	if badUserResp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(badUserResp.Body)
-		t.Fatalf("expected 401 for bad username, got %d: %s", badUserResp.StatusCode, string(body))
+	postLogin := func(values url.Values) (int, string) {
+		t.Helper()
+		headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+		return doRequest(loginClient, http.MethodPost, "/login", "", "", strings.NewReader(values.Encode()), headers)
 	}
 
 	form := url.Values{}
@@ -246,12 +228,6 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 		t.Fatalf("new login request: %v", err)
 	}
 	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	loginClient := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
 	loginResp, err := loginClient.Do(loginReq)
 	if err != nil {
 		t.Fatalf("do login request: %v", err)
@@ -271,60 +247,23 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	badForm := url.Values{}
 	badForm.Set("username", "hackers")
 	badForm.Set("password", "wrongpass")
-	badLoginReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/login", strings.NewReader(badForm.Encode()))
-	if err != nil {
-		t.Fatalf("new bad login request: %v", err)
+	badStatus, badBody := postLogin(badForm)
+	if badStatus != http.StatusOK {
+		t.Fatalf("expected 200 for bad login page, got %d: %s", badStatus, badBody)
 	}
-	badLoginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	badLoginResp, err := loginClient.Do(badLoginReq)
-	if err != nil {
-		t.Fatalf("do bad login request: %v", err)
-	}
-	defer badLoginResp.Body.Close()
-	if badLoginResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(badLoginResp.Body)
-		t.Fatalf("expected 200 for bad login page, got %d: %s", badLoginResp.StatusCode, string(body))
-	}
-	body, _ := io.ReadAll(badLoginResp.Body)
-	if !strings.Contains(string(body), "Invalid credentials.") {
+	if !strings.Contains(badBody, "Invalid credentials.") {
 		t.Fatalf("expected invalid credentials message on login failure")
 	}
 
 	emptyForm := url.Values{}
 	emptyForm.Set("username", "hackers")
 	emptyForm.Set("password", "")
-	emptyReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/login", strings.NewReader(emptyForm.Encode()))
-	if err != nil {
-		t.Fatalf("new empty login request: %v", err)
+	emptyStatus, emptyBody := postLogin(emptyForm)
+	if emptyStatus != http.StatusOK {
+		t.Fatalf("expected 200 for empty login page, got %d: %s", emptyStatus, emptyBody)
 	}
-	emptyReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	emptyResp, err := loginClient.Do(emptyReq)
-	if err != nil {
-		t.Fatalf("do empty login request: %v", err)
-	}
-	defer emptyResp.Body.Close()
-	if emptyResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(emptyResp.Body)
-		t.Fatalf("expected 200 for empty login page, got %d: %s", emptyResp.StatusCode, string(body))
-	}
-	body, _ = io.ReadAll(emptyResp.Body)
-	if !strings.Contains(string(body), "Missing credentials.") {
+	if !strings.Contains(emptyBody, "Missing credentials.") {
 		t.Fatalf("expected missing credentials message on empty login")
-	}
-
-	emptyBasicReq, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/v2/", nil)
-	if err != nil {
-		t.Fatalf("new empty basic auth request: %v", err)
-	}
-	emptyBasicReq.SetBasicAuth("hackers", "")
-	emptyBasicResp, err := client.Do(emptyBasicReq)
-	if err != nil {
-		t.Fatalf("do empty basic auth request: %v", err)
-	}
-	defer emptyBasicResp.Body.Close()
-	if emptyBasicResp.StatusCode != http.StatusUnauthorized {
-		body, _ := io.ReadAll(emptyBasicResp.Body)
-		t.Fatalf("expected 401 for empty basic auth password, got %d: %s", emptyBasicResp.StatusCode, string(body))
 	}
 }
 
