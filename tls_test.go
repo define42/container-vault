@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/caddyserver/certmagic"
 )
 
 func TestEnsureTLSCertCreatesFiles(t *testing.T) {
@@ -76,4 +78,57 @@ func TestLoadCertmagicConfigParsing(t *testing.T) {
 	if cfg.AltHTTPPort != 8080 || cfg.AltTLSALPNPort != 8443 {
 		t.Fatalf("unexpected ports: %#v", cfg)
 	}
+}
+
+func TestCertmagicTLSConfigDisabled(t *testing.T) {
+	t.Setenv("CERTMAGIC_ENABLE", "")
+	t.Setenv("CERTMAGIC_DOMAINS", "")
+
+	cfg, enabled, err := certmagicTLSConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if enabled {
+		t.Fatalf("expected certmagic disabled")
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil tls config")
+	}
+}
+
+func TestCertmagicTLSConfigCARootError(t *testing.T) {
+	restoreCertmagicDefaults(t)
+	t.Setenv("CERTMAGIC_ENABLE", "true")
+	t.Setenv("CERTMAGIC_DOMAINS", "example.com")
+	t.Setenv("CERTMAGIC_CA_ROOT", filepath.Join(t.TempDir(), "missing.pem"))
+
+	cfg, enabled, err := certmagicTLSConfig()
+	if err == nil {
+		t.Fatalf("expected error for missing CA root")
+	}
+	if !enabled {
+		t.Fatalf("expected certmagic enabled")
+	}
+	if cfg != nil {
+		t.Fatalf("expected nil tls config")
+	}
+}
+
+func restoreCertmagicDefaults(t *testing.T) {
+	t.Helper()
+	prevEmail := certmagic.DefaultACME.Email
+	prevCA := certmagic.DefaultACME.CA
+	prevAltHTTP := certmagic.DefaultACME.AltHTTPPort
+	prevAltTLS := certmagic.DefaultACME.AltTLSALPNPort
+	prevRoots := certmagic.DefaultACME.TrustedRoots
+	prevStorage := certmagic.Default.Storage
+
+	t.Cleanup(func() {
+		certmagic.DefaultACME.Email = prevEmail
+		certmagic.DefaultACME.CA = prevCA
+		certmagic.DefaultACME.AltHTTPPort = prevAltHTTP
+		certmagic.DefaultACME.AltTLSALPNPort = prevAltTLS
+		certmagic.DefaultACME.TrustedRoots = prevRoots
+		certmagic.Default.Storage = prevStorage
+	})
 }
