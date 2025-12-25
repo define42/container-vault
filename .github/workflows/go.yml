@@ -3,6 +3,8 @@ name: Go
 on:
   push:
     branches: [ "main" ]
+    tags-ignore:
+      - "v*"          # prevent infinite loops
   pull_request:
     branches: [ "main" ]
 
@@ -11,11 +13,13 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # REQUIRED for tag calculation
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -52,7 +56,18 @@ jobs:
           fail_ci_if_error: true
 
       # -------------------------------
-      # Container build & push (main only)
+      # Auto-create Git tag (main only)
+      # -------------------------------
+
+      - name: Bump version and create tag
+        if: github.event_name == 'push'
+        id: tag
+        uses: mathieudutour/github-tag-action@v6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------------
+      # Container build & push
       # -------------------------------
 
       - name: Set up Docker Buildx
@@ -75,4 +90,5 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.new_tag }}
             ghcr.io/${{ github.repository }}:${{ github.sha }}
