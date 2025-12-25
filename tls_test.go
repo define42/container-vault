@@ -1,13 +1,17 @@
 package main
 
 import (
-	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/caddyserver/certmagic"
 )
@@ -123,9 +127,7 @@ func TestCertmagicTLSConfigAppliesCARootAndStorage(t *testing.T) {
 	certDir := t.TempDir()
 	certPath := filepath.Join(certDir, "root.pem")
 	keyPath := filepath.Join(certDir, "root.key")
-	if err := generateSelfSigned(certPath, keyPath); err != nil {
-		t.Fatalf("generate self-signed: %v", err)
-	}
+	caCert, caKey := writeTestCA(t, certPath, keyPath)
 
 	storagePath := filepath.Join(t.TempDir(), "certmagic")
 
@@ -139,7 +141,7 @@ func TestCertmagicTLSConfigAppliesCARootAndStorage(t *testing.T) {
 		if len(domains) != 1 || domains[0] != "example.com" {
 			t.Fatalf("unexpected domains: %v", domains)
 		}
-		return &tls.Config{}, nil
+		return &tls.Config{MinVersion: tls.VersionTLS12}, nil
 	}
 	t.Cleanup(func() {
 		certmagicTLS = origTLS
@@ -169,29 +171,99 @@ func TestCertmagicTLSConfigAppliesCARootAndStorage(t *testing.T) {
 		t.Fatalf("expected trusted roots")
 	}
 
-	pemBytes, err := os.ReadFile(certPath)
-	if err != nil {
-		t.Fatalf("read CA root: %v", err)
+	leaf := generateLeafCert(t, caCert, caKey, "example.com")
+	if _, err := leaf.Verify(x509.VerifyOptions{
+		Roots:       roots,
+		DNSName:     "example.com",
+		CurrentTime: time.Now(),
+	}); err != nil {
+		t.Fatalf("expected CA root to be added to trusted pool: %v", err)
 	}
-	block, _ := pem.Decode(pemBytes)
-	if block == nil {
-		t.Fatalf("expected PEM block in %s", certPath)
-	}
-	cert, err := x509.ParseCertificate(block.Bytes)
+}
+
+func writeTestCA(t *testing.T, certPath, keyPath string) (*x509.Certificate, *rsa.PrivateKey) {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatalf("parse cert: %v", err)
+		t.Fatalf("generate CA key: %v", err)
 	}
 
-	found := false
-	for _, subject := range roots.Subjects() {
-		if bytes.Equal(subject, cert.RawSubject) {
-			found = true
-			break
-		}
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialLimit)
+	if err != nil {
+		t.Fatalf("generate CA serial: %v", err)
 	}
-	if !found {
-		t.Fatalf("expected CA root to be added to trusted pool")
+
+	now := time.Now()
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: "test-ca",
+		},
+		NotBefore:             now.Add(-time.Hour),
+		NotAfter:              now.Add(24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
 	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		t.Fatalf("create CA cert: %v", err)
+	}
+
+	certOut := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	if err := os.WriteFile(certPath, certOut, 0o600); err != nil {
+		t.Fatalf("write CA cert: %v", err)
+	}
+
+	keyOut := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+	if err := os.WriteFile(keyPath, keyOut, 0o600); err != nil {
+		t.Fatalf("write CA key: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(derBytes)
+	if err != nil {
+		t.Fatalf("parse CA cert: %v", err)
+	}
+	return cert, priv
+}
+
+func generateLeafCert(t *testing.T, ca *x509.Certificate, caKey *rsa.PrivateKey, dnsName string) *x509.Certificate {
+	t.Helper()
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate leaf key: %v", err)
+	}
+
+	serialLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialLimit)
+	if err != nil {
+		t.Fatalf("generate leaf serial: %v", err)
+	}
+
+	now := time.Now()
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: dnsName,
+		},
+		NotBefore:   now.Add(-time.Hour),
+		NotAfter:    now.Add(24 * time.Hour),
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:    []string{dnsName},
+	}
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, ca, &priv.PublicKey, caKey)
+	if err != nil {
+		t.Fatalf("create leaf cert: %v", err)
+	}
+	cert, err := x509.ParseCertificate(derBytes)
+	if err != nil {
+		t.Fatalf("parse leaf cert: %v", err)
+	}
+	return cert
 }
 
 func restoreCertmagicDefaults(t *testing.T) {
