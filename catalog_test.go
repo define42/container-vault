@@ -366,16 +366,15 @@ func TestDeleteManifestNotFound(t *testing.T) {
 	})
 	defer cleanup()
 
-	err := deleteManifest(context.Background(), "team1/app", "sha256:missing")
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	status, message, err := deleteManifest(context.Background(), "team1/app", "sha256:missing")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	regErr, ok := err.(registryError)
-	if !ok {
-		t.Fatalf("expected registryError, got %T", err)
+	if status != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, status)
 	}
-	if regErr.Status != http.StatusNotFound {
-		t.Fatalf("expected status %d, got %d", http.StatusNotFound, regErr.Status)
+	if message != "manifest not found" {
+		t.Fatalf("expected message %q, got %q", "manifest not found", message)
 	}
 }
 
@@ -389,16 +388,15 @@ func TestDeleteManifestMethodNotAllowed(t *testing.T) {
 	})
 	defer cleanup()
 
-	err := deleteManifest(context.Background(), "team1/app", "sha256:locked")
-	if err == nil {
-		t.Fatalf("expected error, got nil")
+	status, message, err := deleteManifest(context.Background(), "team1/app", "sha256:locked")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	regErr, ok := err.(registryError)
-	if !ok {
-		t.Fatalf("expected registryError, got %T", err)
+	if status != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, status)
 	}
-	if regErr.Status != http.StatusMethodNotAllowed {
-		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, regErr.Status)
+	if message != "405 Method Not Allowed" {
+		t.Fatalf("expected message %q, got %q", "405 Method Not Allowed", message)
 	}
 }
 

@@ -136,19 +136,19 @@ func fetchTags(ctx context.Context, repo string) ([]string, error) {
 	return tags.Tags, nil
 }
 
-func fetchTagDigest(ctx context.Context, repo, tag string) (string, error) {
+func fetchTagDigest(ctx context.Context, repo, tag string) (string, int, string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + tag})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodHead, manifestURL.String(), nil)
 	if err != nil {
-		return "", err
+		return "", 0, "", err
 	}
 	req.Header.Set("Accept", manifestAcceptHeader)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", 0, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -157,14 +157,14 @@ func fetchTagDigest(ctx context.Context, repo, tag string) (string, error) {
 		if message == "" {
 			message = resp.Status
 		}
-		return "", registryError{Status: resp.StatusCode, Message: message}
+		return "", resp.StatusCode, message, nil
 	}
 
 	digest := resp.Header.Get("Docker-Content-Digest")
 	if digest == "" {
-		return "", fmt.Errorf("manifest digest missing")
+		return "", 0, "", fmt.Errorf("manifest digest missing")
 	}
-	return digest, nil
+	return digest, 0, "", nil
 }
 
 func fetchTagInfo(ctx context.Context, repo, tag string) (tagInfo, error) {
@@ -232,15 +232,6 @@ type manifestList struct {
 	} `json:"manifests"`
 }
 
-type registryError struct {
-	Status  int
-	Message string
-}
-
-func (e registryError) Error() string {
-	return e.Message
-}
-
 func manifestCompressedSize(ctx context.Context, client *http.Client, repo string, payload []byte, contentType string) (int64, error) {
 	if strings.Contains(contentType, "manifest.list") || strings.Contains(contentType, "image.index") {
 		var list manifestList
@@ -275,23 +266,23 @@ func manifestCompressedSize(ctx context.Context, client *http.Client, repo strin
 	return compressed, nil
 }
 
-func deleteManifest(ctx context.Context, repo, digest string) error {
+func deleteManifest(ctx context.Context, repo, digest string) (int, string, error) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + digest})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, manifestURL.String(), nil)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return 0, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusAccepted || resp.StatusCode == http.StatusOK {
-		return nil
+		return 0, "", nil
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -299,7 +290,7 @@ func deleteManifest(ctx context.Context, repo, digest string) error {
 	if message == "" {
 		message = resp.Status
 	}
-	return registryError{Status: resp.StatusCode, Message: message}
+	return resp.StatusCode, message, nil
 }
 
 func fetchManifestCompressedSizeByDigest(ctx context.Context, client *http.Client, repo, digest string) (int64, error) {

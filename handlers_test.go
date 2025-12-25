@@ -525,8 +525,8 @@ func TestHandleTagDeleteDigestLookupUnavailable(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", rec.Code)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
 
@@ -591,8 +591,8 @@ func TestHandleTagDeleteDeleteUnavailable(t *testing.T) {
 	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
 	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", rec.Code)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
 

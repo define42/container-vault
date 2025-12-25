@@ -285,6 +285,10 @@ type tagDeleteOutput struct {
 	Body tagDeletePayload
 }
 
+func ToHuma(code int, msg string) error {
+	return huma.NewError(code, msg)
+}
+
 func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutput, error) {
 	sess := mustSession(ctx)
 
@@ -299,32 +303,23 @@ func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutp
 		return nil, huma.Error403Forbidden("delete not allowed")
 	}
 
-	digest, err := fetchTagDigest(ctx, repo, tag)
+	digest, status, message, err := fetchTagDigest(ctx, repo, tag)
 	if err != nil {
-		if regErr, ok := err.(registryError); ok {
-			if regErr.Status == http.StatusNotFound {
-				return nil, huma.Error404NotFound(regErr.Error())
-			}
-			if regErr.Status == http.StatusMethodNotAllowed {
-				return nil, huma.Error405MethodNotAllowed(regErr.Error())
-			}
-		}
 		return nil, huma.Error502BadGateway("registry unavailable")
+	}
+	if status != 0 {
+		return nil, ToHuma(status, message)
 	}
 	if digest == "" {
 		return nil, huma.Error502BadGateway("manifest digest missing")
 	}
 
-	if err := deleteManifest(ctx, repo, digest); err != nil {
-		if regErr, ok := err.(registryError); ok {
-			if regErr.Status == http.StatusNotFound {
-				return nil, huma.Error404NotFound(regErr.Error())
-			}
-			if regErr.Status == http.StatusMethodNotAllowed {
-				return nil, huma.Error405MethodNotAllowed(regErr.Error())
-			}
-		}
+	status, message, err = deleteManifest(ctx, repo, digest)
+	if err != nil {
 		return nil, huma.Error502BadGateway("registry delete failed")
+	}
+	if status != 0 {
+		return nil, ToHuma(status, message)
 	}
 
 	return &tagDeleteOutput{
