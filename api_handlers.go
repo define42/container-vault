@@ -24,32 +24,22 @@ func registerAPI(api huma.API) {
 	huma.Delete(group, "/tag", handleTagDelete)
 }
 
+func mustSession(ctx context.Context) sessionData {
+	return ctx.Value(sessionContextKey{}).(sessionData)
+}
+
 func sessionMiddleware(api huma.API) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		req, _ := humachi.Unwrap(ctx)
+
 		sess, ok := getSession(req)
-		if !ok {
+		if !ok || sess.User == nil {
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+
 		next(huma.WithValue(ctx, sessionContextKey{}, sess))
 	}
-}
-
-func sessionFromContext(ctx context.Context) (sessionData, bool) {
-	sess, ok := ctx.Value(sessionContextKey{}).(sessionData)
-	if !ok {
-		return sessionData{}, false
-	}
-	return sess, true
-}
-
-func requireSession(ctx context.Context) (sessionData, error) {
-	sess, ok := sessionFromContext(ctx)
-	if !ok || sess.User == nil {
-		return sessionData{}, huma.Error401Unauthorized("unauthorized")
-	}
-	return sess, nil
 }
 
 type dashboardOutput struct {
@@ -61,10 +51,7 @@ type dashboardOutput struct {
 }
 
 func handleDashboard(ctx context.Context, _ *struct{}) (*dashboardOutput, error) {
-	sess, err := requireSession(ctx)
-	if err != nil {
-		return nil, err
-	}
+	sess := mustSession(ctx)
 
 	page, err := renderDashboardHTML(sess)
 	if err != nil {
@@ -78,6 +65,47 @@ func handleDashboard(ctx context.Context, _ *struct{}) (*dashboardOutput, error)
 		ContentType:  "text/html; charset=utf-8",
 		Body:         page,
 	}, nil
+}
+
+func requireNamespace(sess sessionData, namespace string) (string, error) {
+	ns := strings.TrimSpace(namespace)
+	if ns == "" || !namespaceAllowed(sess.Namespaces, ns) {
+		return "", huma.Error403Forbidden("namespace not allowed")
+	}
+	return ns, nil
+}
+
+func namespaceFromRepo(repo string) (string, error) {
+	parts := strings.SplitN(repo, "/", 2)
+	if len(parts) < 2 {
+		return "", huma.Error400BadRequest("invalid repo")
+	}
+	return parts[0], nil
+}
+
+func repoNamespace(repoInput string) (string, string, error) {
+	repo := strings.TrimSpace(repoInput)
+	if repo == "" {
+		return "", "", huma.Error400BadRequest("missing repo")
+	}
+	namespace, err := namespaceFromRepo(repo)
+	if err != nil {
+		return "", "", err
+	}
+	return repo, namespace, nil
+}
+
+func repoTagNamespace(repoInput, tagInput string) (string, string, string, error) {
+	repo := strings.TrimSpace(repoInput)
+	tag := strings.TrimSpace(tagInput)
+	if repo == "" || tag == "" {
+		return "", "", "", huma.Error400BadRequest("missing repo or tag")
+	}
+	namespace, err := namespaceFromRepo(repo)
+	if err != nil {
+		return "", "", "", err
+	}
+	return repo, tag, namespace, nil
 }
 
 type catalogInput struct {
@@ -95,14 +123,11 @@ type catalogOutput struct {
 }
 
 func handleCatalog(ctx context.Context, input *catalogInput) (*catalogOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	namespace, err := requireNamespace(sess, input.Namespace)
 	if err != nil {
 		return nil, err
-	}
-
-	namespace := strings.TrimSpace(input.Namespace)
-	if namespace == "" || !namespaceAllowed(sess.Namespaces, namespace) {
-		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
 
 	repos, err := fetchCatalog(ctx, namespace)
@@ -133,14 +158,11 @@ type reposOutput struct {
 }
 
 func handleRepos(ctx context.Context, input *reposInput) (*reposOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	namespace, err := requireNamespace(sess, input.Namespace)
 	if err != nil {
 		return nil, err
-	}
-
-	namespace := strings.TrimSpace(input.Namespace)
-	if namespace == "" || !namespaceAllowed(sess.Namespaces, namespace) {
-		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
 
 	repos, err := fetchRepos(ctx, namespace)
@@ -170,21 +192,12 @@ type tagsOutput struct {
 }
 
 func handleTags(ctx context.Context, input *tagsInput) (*tagsOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	repo, namespace, err := repoNamespace(input.Repo)
 	if err != nil {
 		return nil, err
 	}
-
-	repo := strings.TrimSpace(input.Repo)
-	if repo == "" {
-		return nil, huma.Error400BadRequest("missing repo")
-	}
-
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) < 2 {
-		return nil, huma.Error400BadRequest("invalid repo")
-	}
-	namespace := parts[0]
 	if !namespaceAllowed(sess.Namespaces, namespace) {
 		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
@@ -212,22 +225,12 @@ type tagInfoOutput struct {
 }
 
 func handleTagInfo(ctx context.Context, input *tagInfoInput) (*tagInfoOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	repo, tag, namespace, err := repoTagNamespace(input.Repo, input.Tag)
 	if err != nil {
 		return nil, err
 	}
-
-	repo := strings.TrimSpace(input.Repo)
-	tag := strings.TrimSpace(input.Tag)
-	if repo == "" || tag == "" {
-		return nil, huma.Error400BadRequest("missing repo or tag")
-	}
-
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) < 2 {
-		return nil, huma.Error400BadRequest("invalid repo")
-	}
-	namespace := parts[0]
 	if !namespaceAllowed(sess.Namespaces, namespace) {
 		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
@@ -250,22 +253,12 @@ type tagLayersOutput struct {
 }
 
 func handleTagLayers(ctx context.Context, input *tagLayersInput) (*tagLayersOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	repo, tag, namespace, err := repoTagNamespace(input.Repo, input.Tag)
 	if err != nil {
 		return nil, err
 	}
-
-	repo := strings.TrimSpace(input.Repo)
-	tag := strings.TrimSpace(input.Tag)
-	if repo == "" || tag == "" {
-		return nil, huma.Error400BadRequest("missing repo or tag")
-	}
-
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) < 2 {
-		return nil, huma.Error400BadRequest("invalid repo")
-	}
-	namespace := parts[0]
 	if !namespaceAllowed(sess.Namespaces, namespace) {
 		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
@@ -293,22 +286,12 @@ type tagDeleteOutput struct {
 }
 
 func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutput, error) {
-	sess, err := requireSession(ctx)
+	sess := mustSession(ctx)
+
+	repo, tag, namespace, err := repoTagNamespace(input.Repo, input.Tag)
 	if err != nil {
 		return nil, err
 	}
-
-	repo := strings.TrimSpace(input.Repo)
-	tag := strings.TrimSpace(input.Tag)
-	if repo == "" || tag == "" {
-		return nil, huma.Error400BadRequest("missing repo or tag")
-	}
-
-	parts := strings.SplitN(repo, "/", 2)
-	if len(parts) < 2 {
-		return nil, huma.Error400BadRequest("invalid repo")
-	}
-	namespace := parts[0]
 	if !namespaceAllowed(sess.Namespaces, namespace) {
 		return nil, huma.Error403Forbidden("namespace not allowed")
 	}
