@@ -152,7 +152,12 @@ func fetchTagDigest(ctx context.Context, repo, tag string) (string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("manifest status: %s", resp.Status)
+		body, _ := io.ReadAll(resp.Body)
+		message := strings.TrimSpace(string(body))
+		if message == "" {
+			message = resp.Status
+		}
+		return "", registryError{Status: resp.StatusCode, Message: message}
 	}
 
 	digest := resp.Header.Get("Docker-Content-Digest")

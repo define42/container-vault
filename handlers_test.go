@@ -375,6 +375,223 @@ func TestHandleTagDeleteSuccess(t *testing.T) {
 	}
 }
 
+func TestHandleTagDeleteNotFound(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead || r.URL.Path != "/v2/team1/app/manifests/missing" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "manifest not found", http.StatusNotFound)
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=missing", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteMethodNotAllowed(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/team1/app/manifests/locked":
+			if r.Method != http.MethodHead {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Docker-Content-Digest", "sha256:locked")
+		case "/v2/team1/app/manifests/sha256:locked":
+			if r.Method != http.MethodDelete {
+				http.NotFound(w, r)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=locked", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteMissingTag(t *testing.T) {
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteInvalidRepo(t *testing.T) {
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteNamespaceNotAllowed(t *testing.T) {
+	router := cvRouter()
+	access := []Access{{Namespace: "team2", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteNotAllowed(t *testing.T) {
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: false}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteDigestLookupMethodNotAllowed(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead || r.URL.Path != "/v2/team1/app/manifests/v1" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteDigestLookupUnavailable(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead || r.URL.Path != "/v2/team1/app/manifests/v1" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteDeleteNotFound(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/team1/app/manifests/v1":
+			if r.Method != http.MethodHead {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Docker-Content-Digest", "sha256:missing")
+		case "/v2/team1/app/manifests/sha256:missing":
+			if r.Method != http.MethodDelete {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "not found", http.StatusNotFound)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestHandleTagDeleteDeleteUnavailable(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v2/team1/app/manifests/v1":
+			if r.Method != http.MethodHead {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Docker-Content-Digest", "sha256:boom")
+		case "/v2/team1/app/manifests/sha256:boom":
+			if r.Method != http.MethodDelete {
+				http.NotFound(w, r)
+				return
+			}
+			http.Error(w, "boom", http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer cleanup()
+
+	router := cvRouter()
+	access := []Access{{Namespace: "team1", PullOnly: false, DeleteAllowed: true}}
+	token := seedSessionWithAccess(t, "alice", access)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/tag?repo=team1/app&tag=v1", nil)
+	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d", rec.Code)
+	}
+}
+
 func TestBuildNamespacePermissions(t *testing.T) {
 	namespaces := []string{"team1", "team2", "team3", "team4"}
 	access := []Access{

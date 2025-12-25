@@ -318,6 +318,14 @@ func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutp
 
 	digest, err := fetchTagDigest(ctx, repo, tag)
 	if err != nil {
+		if regErr, ok := err.(registryError); ok {
+			if regErr.Status == http.StatusNotFound {
+				return nil, huma.Error404NotFound("tag not found")
+			}
+			if regErr.Status == http.StatusMethodNotAllowed {
+				return nil, huma.Error405MethodNotAllowed("registry tag lookup not allowed")
+			}
+		}
 		return nil, huma.Error502BadGateway("registry unavailable")
 	}
 	if digest == "" {
@@ -330,7 +338,7 @@ func handleTagDelete(ctx context.Context, input *tagDeleteInput) (*tagDeleteOutp
 				return nil, huma.Error404NotFound("tag not found")
 			}
 			if regErr.Status == http.StatusMethodNotAllowed {
-				return nil, huma.Error409Conflict("registry delete disabled")
+				return nil, huma.Error405MethodNotAllowed("registry delete disabled")
 			}
 		}
 		return nil, huma.Error502BadGateway("registry delete failed")
