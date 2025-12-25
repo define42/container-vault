@@ -8,9 +8,9 @@ import (
 	"github.com/go-ldap/ldap/v3"
 )
 
-
 func ldapAuthenticate(username, password string) (*User, error) {
 	user, _, err := ldapAuthenticateAccess(username, password)
+	fmt.Println(user)
 	return user, err
 }
 
