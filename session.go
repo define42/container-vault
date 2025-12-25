@@ -1,56 +1,59 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"context"
+	"encoding/gob"
 	"net/http"
-	"sync"
 	"time"
+
+	"github.com/alexedwards/scs/v2"
+	"github.com/alexedwards/scs/v2/memstore"
 )
 
-var (
-	sessionMu sync.Mutex
-	sessions  = map[string]sessionData{}
-)
+const sessionKey = "session"
 
-func createSession(u *User, access []Access) string {
-	tokenBytes := make([]byte, 32)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		panic(err)
-	}
-	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+var sessionManager = newSessionManager()
+
+func init() {
+	gob.Register(sessionData{})
+}
+
+func newSessionManager() *scs.SessionManager {
+	manager := scs.New()
+	manager.Store = memstore.New()
+	manager.Lifetime = sessionTTL
+	manager.Cookie.Name = "cv_session"
+	manager.Cookie.Path = "/"
+	manager.Cookie.HttpOnly = true
+	manager.Cookie.SameSite = http.SameSiteLaxMode
+	manager.Cookie.Secure = true
+	return manager
+}
+
+func createSession(ctx context.Context, u *User, access []Access) error {
 	namespaces := namespacesFromAccess(access)
-
-	sessionMu.Lock()
-	sessions[token] = sessionData{
+	if err := sessionManager.RenewToken(ctx); err != nil {
+		return err
+	}
+	sessionManager.Put(ctx, sessionKey, sessionData{
 		User:       u,
 		Access:     access,
 		Namespaces: namespaces,
 		CreatedAt:  time.Now(),
-	}
-	sessionMu.Unlock()
-
-	return token
+	})
+	return nil
 }
 
 func getSession(r *http.Request) (sessionData, bool) {
-	cookie, err := r.Cookie("cv_session")
-	if err != nil || cookie.Value == "" {
-		return sessionData{}, false
-	}
-
-	sessionMu.Lock()
-	defer sessionMu.Unlock()
-
-	sess, ok := sessions[cookie.Value]
-	if !ok {
-		return sessionData{}, false
-	}
-	if time.Since(sess.CreatedAt) > sessionTTL {
-		delete(sessions, cookie.Value)
+	sess, ok := sessionManager.Get(r.Context(), sessionKey).(sessionData)
+	if !ok || sess.User == nil {
 		return sessionData{}, false
 	}
 	return sess, true
+}
+
+func destroySession(ctx context.Context) error {
+	return sessionManager.Destroy(ctx)
 }
 
 func namespacesFromAccess(access []Access) []string {

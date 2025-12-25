@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -29,17 +30,29 @@ func TestCreateSessionStoresData(t *testing.T) {
 		{Namespace: "team1"},
 	}
 
+	ctx, err := sessionManager.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
 	start := time.Now()
-	token := createSession(user, access)
+	if err := createSession(ctx, user, access); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	token, _, err := sessionManager.Commit(ctx)
+	if err != nil {
+		t.Fatalf("commit session: %v", err)
+	}
 	end := time.Now()
 
 	if token == "" {
 		t.Fatalf("expected token to be set")
 	}
 
-	sessionMu.Lock()
-	sess, ok := sessions[token]
-	sessionMu.Unlock()
+	loadedCtx, err := sessionManager.Load(context.Background(), token)
+	if err != nil {
+		t.Fatalf("load committed session: %v", err)
+	}
+	sess, ok := sessionManager.Get(loadedCtx, sessionKey).(sessionData)
 	if !ok {
 		t.Fatalf("expected session to be stored")
 	}
@@ -57,16 +70,26 @@ func TestCreateSessionStoresData(t *testing.T) {
 
 func TestGetSessionValid(t *testing.T) {
 	resetSessions(t)
-	token := "token-valid"
-	sessionMu.Lock()
-	sessions[token] = sessionData{
+	ctx, err := sessionManager.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	sessionManager.Put(ctx, sessionKey, sessionData{
 		User:      &User{Name: "tester"},
 		CreatedAt: time.Now(),
+	})
+	token, _, err := sessionManager.Commit(ctx)
+	if err != nil {
+		t.Fatalf("commit session: %v", err)
 	}
-	sessionMu.Unlock()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	reqCtx, err := sessionManager.Load(req.Context(), token)
+	if err != nil {
+		t.Fatalf("load request session: %v", err)
+	}
+	req = req.WithContext(reqCtx)
 	if _, ok := getSession(req); !ok {
 		t.Fatalf("expected session to be valid")
 	}
@@ -74,36 +97,37 @@ func TestGetSessionValid(t *testing.T) {
 
 func TestGetSessionExpired(t *testing.T) {
 	resetSessions(t)
-	token := "token-expired"
-	sessionMu.Lock()
-	sessions[token] = sessionData{
-		User:      &User{Name: "tester"},
-		CreatedAt: time.Now().Add(-sessionTTL - time.Minute),
+	sessionManager.Lifetime = 10 * time.Millisecond
+	ctx, err := sessionManager.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
 	}
-	sessionMu.Unlock()
+	sessionManager.Put(ctx, sessionKey, sessionData{
+		User:      &User{Name: "tester"},
+		CreatedAt: time.Now(),
+	})
+	token, _, err := sessionManager.Commit(ctx)
+	if err != nil {
+		t.Fatalf("commit session: %v", err)
+	}
+	time.Sleep(20 * time.Millisecond)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
+	reqCtx, err := sessionManager.Load(req.Context(), token)
+	if err != nil {
+		t.Fatalf("load request session: %v", err)
+	}
+	req = req.WithContext(reqCtx)
 	if _, ok := getSession(req); ok {
 		t.Fatalf("expected session to be expired")
-	}
-
-	sessionMu.Lock()
-	_, exists := sessions[token]
-	sessionMu.Unlock()
-	if exists {
-		t.Fatalf("expected expired session to be removed")
 	}
 }
 
 func resetSessions(t *testing.T) {
 	t.Helper()
-	sessionMu.Lock()
-	sessions = map[string]sessionData{}
-	sessionMu.Unlock()
+	sessionManager = newSessionManager()
 	t.Cleanup(func() {
-		sessionMu.Lock()
-		sessions = map[string]sessionData{}
-		sessionMu.Unlock()
+		sessionManager = newSessionManager()
 	})
 }

@@ -44,15 +44,11 @@ func handleLoginPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token := createSession(user, access)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "cv_session",
-		Value:    token,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	if err := createSession(r.Context(), user, access); err != nil {
+		log.Printf("session create failed for %s: %v", username, err)
+		serveLogin(w, "Login failed.")
+		return
+	}
 	http.Redirect(w, r, "/api/dashboard", http.StatusSeeOther)
 }
 
@@ -188,22 +184,9 @@ func setNoCacheHeaders(w http.ResponseWriter) {
 }
 
 func handleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("cv_session")
-	if err == nil && cookie.Value != "" {
-		sessionMu.Lock()
-		delete(sessions, cookie.Value)
-		sessionMu.Unlock()
+	if err := destroySession(r.Context()); err != nil {
+		log.Printf("session destroy failed: %v", err)
 	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     "cv_session",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 

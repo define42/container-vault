@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -79,10 +80,11 @@ func TestHandleLoginInvalidForm(t *testing.T) {
 
 func TestHandleLogoutClearsSession(t *testing.T) {
 	token := seedSession(t, "alice", []string{"team1"})
+	router := cvRouter()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "cv_session", Value: token})
-	handleLogout(rec, req)
+	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303, got %d", rec.Code)
@@ -91,18 +93,20 @@ func TestHandleLogoutClearsSession(t *testing.T) {
 		t.Fatalf("expected session cookie to be cleared")
 	}
 
-	sessionMu.Lock()
-	_, exists := sessions[token]
-	sessionMu.Unlock()
-	if exists {
+	ctx, err := sessionManager.Load(context.Background(), token)
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	if sessionManager.Exists(ctx, sessionKey) {
 		t.Fatalf("expected session to be removed")
 	}
 }
 
 func TestHandleLogoutMethodNotAllowed(t *testing.T) {
+	router := cvRouter()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
-	handleLogout(rec, req)
+	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("expected 303, got %d", rec.Code)
 	}
@@ -679,22 +683,22 @@ func seedSessionWithAccess(t *testing.T, userName string, access []Access) strin
 
 func seedSessionData(t *testing.T, userName string, namespaces []string, access []Access) string {
 	t.Helper()
-	sessionMu.Lock()
-	sessions = map[string]sessionData{}
-	sessionMu.Unlock()
-	t.Cleanup(func() {
-		sessionMu.Lock()
-		sessions = map[string]sessionData{}
-		sessionMu.Unlock()
-	})
-	token := "token-" + userName
-	sessionMu.Lock()
-	sessions[token] = sessionData{
+	ctx, err := sessionManager.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load session: %v", err)
+	}
+	sessionManager.Put(ctx, sessionKey, sessionData{
 		User:       &User{Name: userName},
 		Access:     access,
 		Namespaces: namespaces,
 		CreatedAt:  time.Now(),
+	})
+	token, _, err := sessionManager.Commit(ctx)
+	if err != nil {
+		t.Fatalf("commit session: %v", err)
 	}
-	sessionMu.Unlock()
+	t.Cleanup(func() {
+		_ = sessionManager.Store.Delete(token)
+	})
 	return token
 }

@@ -40,6 +40,7 @@ func cvRouter() http.Handler {
 	proxy.FlushInterval = -1 // important for streaming blobs
 
 	router := chi.NewRouter()
+	router.Use(sessionManager.LoadAndSave)
 	staticHandler := http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir)))
 	router.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/static/")
