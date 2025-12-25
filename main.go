@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"mime"
 	"net/http"
@@ -73,8 +72,18 @@ func cvRouter() http.Handler {
 		}
 
 		if !authorize(access, r) {
-			fmt.Println("forbidden", user.Name, r.Method, r.URL.Path, user)
-			http.Error(w, "forbidden", http.StatusForbidden)
+			forbiddenMessage := "forbidden by user \"" + user.Name + "\" only allowed access to "
+			if len(access) == 0 {
+				forbiddenMessage += "no repositories"
+			} else {
+				var repos []string
+				for _, a := range access {
+					repos = append(repos, a.Group)
+				}
+				forbiddenMessage += "repositories: " + strings.Join(repos, ", ")
+			}
+
+			http.Error(w, forbiddenMessage, http.StatusForbidden)
 			return
 		}
 

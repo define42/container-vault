@@ -68,6 +68,7 @@ type HistoryEntry = {
 (function initDashboard() {
   const tree = document.getElementById("tree");
   const detail = document.getElementById("detailPanel");
+  const refreshButton = document.getElementById("refreshBtn") as HTMLButtonElement | null;
   if (!tree || !detail) {
     return;
   }
@@ -170,6 +171,31 @@ type HistoryEntry = {
       escapeHTML(tooltip) +
       '">i</span>'
     );
+  }
+
+  function clearRepoCaches(repo: string): void {
+    delete state.tagsByRepo[repo];
+    const prefix = repo + ":";
+    Object.keys(state.tagDetailsByTag).forEach((key) => {
+      if (!key.startsWith(prefix)) {
+        return;
+      }
+      delete state.tagDetailsByTag[key];
+      delete state.layersVisible[key];
+      delete state.layersLoading[key];
+    });
+  }
+
+  async function refreshView(): Promise<void> {
+    const namespace = state.expandedNamespace;
+    const repo = state.expandedRepo;
+    if (namespace) {
+      await loadRepos(namespace);
+    }
+    if (repo) {
+      clearRepoCaches(repo);
+      await loadTags(repo);
+    }
   }
 
   function namespaceFromRepo(repo: string): string {
@@ -932,6 +958,12 @@ type HistoryEntry = {
     }
     toggleDetails(row);
   });
+
+  if (refreshButton) {
+    refreshButton.addEventListener("click", () => {
+      refreshView();
+    });
+  }
 
   renderTree();
 })();

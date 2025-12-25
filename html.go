@@ -62,9 +62,14 @@ const dashboardHTML = `<!doctype html>
     p { margin:6px 0 18px; color:var(--muted); }
     .layout { display:grid; gap:18px; grid-template-columns: 320px 1fr; }
     .panel { border:1px solid var(--line); border-radius:16px; padding:16px; background:rgba(2,6,23,0.75); }
+    .panel-header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
     .panel-title { font-size:12px; letter-spacing:0.3px; text-transform:uppercase; color:var(--muted); margin-bottom:12px; }
+    .panel-header .panel-title { margin-bottom:0; }
     .mono { font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace; color:#cbd5e1; }
     .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    .top-actions { display:flex; align-items:center; gap:10px; }
+    .refresh { border:1px solid rgba(56,189,248,0.6); background:rgba(56,189,248,0.12); color:#bae6fd; padding:8px 12px; border-radius:10px; cursor:pointer; }
+    .refresh:hover { border-color:rgba(56,189,248,0.9); background:rgba(56,189,248,0.24); color:#e0f2fe; }
     .logout { border:1px solid var(--line); background:#0b1224; color:#e2e8f0; padding:8px 12px; border-radius:10px; cursor:pointer; }
     .tree { display:flex; flex-direction:column; gap:6px; }
     .node { width:100%; text-align:left; border:1px solid var(--line); background:var(--tree); color:#e2e8f0; padding:8px 10px; border-radius:10px; display:flex; align-items:center; gap:8px; cursor:pointer; font-size:14px; }
@@ -141,7 +146,10 @@ const dashboardHTML = `<!doctype html>
   </div>
   <div class="layout">
     <div class="panel">
-      <div class="panel-title">Namespace Tree</div>
+      <div class="panel-header">
+        <div class="panel-title">Namespace Tree</div>
+        <button id="refreshBtn" class="refresh" type="button">Refresh</button>
+      </div>
       <div id="tree" class="tree"></div>
     </div>
     <div class="panel">
