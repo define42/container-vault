@@ -356,6 +356,52 @@ func TestFetchTagDetailsManifestList(t *testing.T) {
 	}
 }
 
+func TestDeleteManifestNotFound(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v2/team1/app/manifests/sha256:missing" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "manifest not found", http.StatusNotFound)
+	})
+	defer cleanup()
+
+	err := deleteManifest(context.Background(), "team1/app", "sha256:missing")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	regErr, ok := err.(registryError)
+	if !ok {
+		t.Fatalf("expected registryError, got %T", err)
+	}
+	if regErr.Status != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, regErr.Status)
+	}
+}
+
+func TestDeleteManifestMethodNotAllowed(t *testing.T) {
+	cleanup := withUpstream(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/v2/team1/app/manifests/sha256:locked" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})
+	defer cleanup()
+
+	err := deleteManifest(context.Background(), "team1/app", "sha256:locked")
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	regErr, ok := err.(registryError)
+	if !ok {
+		t.Fatalf("expected registryError, got %T", err)
+	}
+	if regErr.Status != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, regErr.Status)
+	}
+}
+
 func withUpstream(t *testing.T, handler http.HandlerFunc) func() {
 	t.Helper()
 	server := httptest.NewServer(handler)
