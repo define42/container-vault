@@ -109,34 +109,47 @@ func buildNamespacePermissions(namespaces []string, access []Access) []namespace
 	seen := make(map[string]bool, len(namespaces))
 
 	for _, entry := range access {
-		if entry.Namespace == "" {
-			continue
-		}
-		seen[entry.Namespace] = true
-		perm := perms[entry.Namespace]
-		if perm == nil {
-			perm = &namespacePermission{
-				Namespace: entry.Namespace,
-				PullOnly:  true,
-			}
-			perms[entry.Namespace] = perm
-		}
-		if !entry.PullOnly {
-			perm.PullOnly = false
-		}
-		if entry.DeleteAllowed {
-			perm.DeleteAllowed = true
-		}
-		if entry.Group != "" && hasPermissionSuffix(entry.Group) {
-			set := groupSets[entry.Namespace]
-			if set == nil {
-				set = map[string]struct{}{}
-				groupSets[entry.Namespace] = set
-			}
-			set[entry.Group] = struct{}{}
-		}
+		mergeNamespaceAccess(perms, groupSets, seen, entry)
 	}
 
+	applyPermissionGroups(perms, groupSets)
+	return orderedNamespacePermissions(namespaces, perms, seen)
+}
+
+func mergeNamespaceAccess(perms map[string]*namespacePermission, groupSets map[string]map[string]struct{}, seen map[string]bool, entry Access) {
+	if entry.Namespace == "" {
+		return
+	}
+	seen[entry.Namespace] = true
+	perm := perms[entry.Namespace]
+	if perm == nil {
+		perm = &namespacePermission{
+			Namespace: entry.Namespace,
+			PullOnly:  true,
+		}
+		perms[entry.Namespace] = perm
+	}
+	if !entry.PullOnly {
+		perm.PullOnly = false
+	}
+	if entry.DeleteAllowed {
+		perm.DeleteAllowed = true
+	}
+	if entry.Group != "" && hasPermissionSuffix(entry.Group) {
+		addPermissionGroup(groupSets, entry.Namespace, entry.Group)
+	}
+}
+
+func addPermissionGroup(groupSets map[string]map[string]struct{}, namespace, group string) {
+	set := groupSets[namespace]
+	if set == nil {
+		set = map[string]struct{}{}
+		groupSets[namespace] = set
+	}
+	set[group] = struct{}{}
+}
+
+func applyPermissionGroups(perms map[string]*namespacePermission, groupSets map[string]map[string]struct{}) {
 	for ns, perm := range perms {
 		set := groupSets[ns]
 		if len(set) == 0 {
@@ -148,7 +161,9 @@ func buildNamespacePermissions(namespaces []string, access []Access) []namespace
 		}
 		sort.Strings(perm.Groups)
 	}
+}
 
+func orderedNamespacePermissions(namespaces []string, perms map[string]*namespacePermission, seen map[string]bool) []namespacePermission {
 	result := make([]namespacePermission, 0, len(namespaces))
 	for _, ns := range namespaces {
 		if ns == "" {
@@ -167,7 +182,6 @@ func buildNamespacePermissions(namespaces []string, access []Access) []namespace
 			DeleteAllowed: false,
 		})
 	}
-
 	return result
 }
 

@@ -352,37 +352,95 @@ type imageConfig struct {
 	} `json:"history"`
 }
 
-func fetchTagDetails(ctx context.Context, repo, tag string) (tagDetails, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + tag})
-
+func fetchManifestPayload(ctx context.Context, client *http.Client, repo, ref string) ([]byte, string, string, error) {
+	manifestURL := upstream.ResolveReference(&url.URL{Path: "/v2/" + repo + "/manifests/" + ref})
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, manifestURL.String(), nil)
 	if err != nil {
-		return tagDetails{}, err
+		return nil, "", "", err
 	}
-	req.Header.Set("Accept", strings.Join([]string{
-		"application/vnd.docker.distribution.manifest.v2+json",
-		"application/vnd.docker.distribution.manifest.list.v2+json",
-		"application/vnd.oci.image.manifest.v1+json",
-		"application/vnd.oci.image.index.v1+json",
-	}, ", "))
-
+	req.Header.Set("Accept", manifestAcceptHeader)
 	resp, err := client.Do(req)
 	if err != nil {
-		return tagDetails{}, err
+		return nil, "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return tagDetails{}, fmt.Errorf("manifest status: %s", resp.Status)
+		return nil, "", "", fmt.Errorf("manifest status: %s", resp.Status)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		return nil, "", "", err
+	}
+	return body, resp.Header.Get("Content-Type"), resp.Header.Get("Docker-Content-Digest"), nil
+}
+
+func isManifestListContentType(contentType string) bool {
+	return strings.Contains(contentType, "manifest.list") || strings.Contains(contentType, "image.index")
+}
+
+func buildPlatforms(list manifestList) []platformInfo {
+	platforms := make([]platformInfo, 0, len(list.Manifests))
+	for _, manifest := range list.Manifests {
+		platforms = append(platforms, platformInfo{
+			OS:           manifest.Platform.OS,
+			Architecture: manifest.Platform.Architecture,
+			Variant:      manifest.Platform.Variant,
+		})
+	}
+	return platforms
+}
+
+func selectManifestDigest(list manifestList) (string, error) {
+	for _, manifest := range list.Manifests {
+		if manifest.Platform.OS == "linux" && manifest.Platform.Architecture == "amd64" {
+			return manifest.Digest, nil
+		}
+	}
+	if len(list.Manifests) > 0 {
+		return list.Manifests[0].Digest, nil
+	}
+	return "", fmt.Errorf("manifest list empty")
+}
+
+func resolveManifestBody(ctx context.Context, client *http.Client, repo string, body []byte, contentType string) ([]byte, []platformInfo, error) {
+	if !isManifestListContentType(contentType) {
+		return body, nil, nil
+	}
+	var list manifestList
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, nil, err
+	}
+	platforms := buildPlatforms(list)
+	selected, err := selectManifestDigest(list)
+	if err != nil {
+		return nil, nil, err
+	}
+	manifestBody, err := fetchManifestByDigest(ctx, client, repo, selected)
+	if err != nil {
+		return nil, nil, err
+	}
+	return manifestBody, platforms, nil
+}
+
+func buildLayerInfo(manifest manifestSchema2) []layerInfo {
+	layers := make([]layerInfo, 0, len(manifest.Layers))
+	for _, layer := range manifest.Layers {
+		layers = append(layers, layerInfo{
+			Digest:    layer.Digest,
+			Size:      layer.Size,
+			MediaType: layer.MediaType,
+		})
+	}
+	return layers
+}
+
+func fetchTagDetails(ctx context.Context, repo, tag string) (tagDetails, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	body, contentType, digest, err := fetchManifestPayload(ctx, client, repo, tag)
+	if err != nil {
 		return tagDetails{}, err
 	}
-
-	manifestBody := body
-	contentType := resp.Header.Get("Content-Type")
-	digest := resp.Header.Get("Docker-Content-Digest")
 	details := tagDetails{
 		Repo:      repo,
 		Tag:       tag,
@@ -390,36 +448,12 @@ func fetchTagDetails(ctx context.Context, repo, tag string) (tagDetails, error) 
 		MediaType: contentType,
 	}
 
-	if strings.Contains(contentType, "manifest.list") || strings.Contains(contentType, "image.index") {
-		var list manifestList
-		if err := json.Unmarshal(body, &list); err != nil {
-			return tagDetails{}, err
-		}
-		details.Platforms = make([]platformInfo, 0, len(list.Manifests))
-		for _, manifest := range list.Manifests {
-			details.Platforms = append(details.Platforms, platformInfo{
-				OS:           manifest.Platform.OS,
-				Architecture: manifest.Platform.Architecture,
-				Variant:      manifest.Platform.Variant,
-			})
-		}
-		selected := ""
-		for _, manifest := range list.Manifests {
-			if manifest.Platform.OS == "linux" && manifest.Platform.Architecture == "amd64" {
-				selected = manifest.Digest
-				break
-			}
-		}
-		if selected == "" && len(list.Manifests) > 0 {
-			selected = list.Manifests[0].Digest
-		}
-		if selected == "" {
-			return tagDetails{}, fmt.Errorf("manifest list empty")
-		}
-		manifestBody, err = fetchManifestByDigest(ctx, client, repo, selected)
-		if err != nil {
-			return tagDetails{}, err
-		}
+	manifestBody, platforms, err := resolveManifestBody(ctx, client, repo, body, contentType)
+	if err != nil {
+		return tagDetails{}, err
+	}
+	if len(platforms) > 0 {
+		details.Platforms = platforms
 	}
 
 	var manifest manifestSchema2
@@ -432,15 +466,7 @@ func fetchTagDetails(ctx context.Context, repo, tag string) (tagDetails, error) 
 		details.MediaType = manifest.MediaType
 	}
 
-	layers := make([]layerInfo, 0, len(manifest.Layers))
-	for _, layer := range manifest.Layers {
-		layers = append(layers, layerInfo{
-			Digest:    layer.Digest,
-			Size:      layer.Size,
-			MediaType: layer.MediaType,
-		})
-	}
-	details.Layers = layers
+	details.Layers = buildLayerInfo(manifest)
 
 	config, err := fetchConfigInfo(ctx, client, repo, manifest)
 	if err != nil {
