@@ -137,16 +137,116 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	baseURL := setupLDAPProxyServer(t, ctx)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	accessCases := []requestCase{
+		{name: "ping", method: http.MethodGet, path: "/v2/", user: "hackers", pass: "dogood", wantStatus: http.StatusOK},
+		{name: "wrong namespace", method: http.MethodGet, path: "/v2/something", user: "hackers", pass: "dogood", wantStatus: http.StatusForbidden},
+		{name: "dashboard without auth", method: http.MethodGet, path: "/dashboard", wantStatus: http.StatusUnauthorized},
+		{name: "bad password", method: http.MethodGet, path: "/v2/", user: "hackers", pass: "wrongpass", wantStatus: http.StatusUnauthorized},
+		{name: "bad user", method: http.MethodGet, path: "/v2/something", user: "wronguser", pass: "dogood", wantStatus: http.StatusUnauthorized},
+		{name: "empty password", method: http.MethodGet, path: "/v2/", user: "hackers", wantStatus: http.StatusUnauthorized},
+		{name: "empty username and password", method: http.MethodGet, path: "/v2/", wantStatus: http.StatusUnauthorized},
+		{name: "empty password with username", method: http.MethodGet, path: "/v2/", user: "", pass: "dogood", wantStatus: http.StatusUnauthorized},
+	}
+	assertRequestCases(t, ctx, baseURL, client, accessCases)
+
+	loginClient := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	assertLoginSuccess(t, ctx, baseURL, loginClient, "hackers", "dogood")
+	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "wrongpass", "Invalid credentials.")
+	assertLoginFailure(t, ctx, baseURL, loginClient, "hackers", "", "Missing credentials.")
+}
+
+type requestCase struct {
+	name       string
+	method     string
+	path       string
+	user       string
+	pass       string
+	wantStatus int
+}
+
+func doRequest(t *testing.T, ctx context.Context, baseURL string, client *http.Client, method, path, user, pass string, body io.Reader, headers map[string]string) (int, string, http.Header) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, body)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	if user != "" || pass != "" {
+		req.SetBasicAuth(user, pass)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(data), resp.Header.Clone()
+}
+
+func assertRequestCases(t *testing.T, ctx context.Context, baseURL string, client *http.Client, cases []requestCase) {
+	t.Helper()
+	for _, tc := range cases {
+		status, body, _ := doRequest(t, ctx, baseURL, client, tc.method, tc.path, tc.user, tc.pass, nil, nil)
+		if status != tc.wantStatus {
+			t.Fatalf("expected %d for %s, got %d: %s", tc.wantStatus, tc.name, status, body)
+		}
+	}
+}
+
+func assertLoginSuccess(t *testing.T, ctx context.Context, baseURL string, client *http.Client, username, password string) {
+	t.Helper()
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	status, _, header := doRequest(t, ctx, baseURL, client, http.MethodPost, "/login", "", "", strings.NewReader(form.Encode()), headers)
+	if status != http.StatusSeeOther {
+		t.Fatalf("expected 303 for login, got %d", status)
+	}
+	if loc := header.Get("Location"); loc != "/api/dashboard" {
+		t.Fatalf("expected redirect to /api/dashboard, got %q", loc)
+	}
+	if !strings.Contains(header.Get("Set-Cookie"), "cv_session=") {
+		t.Fatalf("expected session cookie on login")
+	}
+}
+
+func assertLoginFailure(t *testing.T, ctx context.Context, baseURL string, client *http.Client, username, password, message string) {
+	t.Helper()
+	form := url.Values{}
+	form.Set("username", username)
+	form.Set("password", password)
+	headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
+	status, body, _ := doRequest(t, ctx, baseURL, client, http.MethodPost, "/login", "", "", strings.NewReader(form.Encode()), headers)
+	if status != http.StatusOK {
+		t.Fatalf("expected 200 for login page, got %d: %s", status, body)
+	}
+	if !strings.Contains(body, message) {
+		t.Fatalf("expected login message %q, got %q", message, body)
+	}
+}
+
+func setupLDAPProxyServer(t *testing.T, ctx context.Context) string {
+	t.Helper()
+
 	ldapURL, stopLDAP := startGlauth(ctx, t, "")
-	defer stopLDAP()
+	t.Cleanup(stopLDAP)
 
 	registryHost, stopRegistry := startRegistry(ctx, t, "")
-	defer stopRegistry()
+	t.Cleanup(stopRegistry)
 
-	t.Setenv("LDAP_URL", ldapURL)
-	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
-	t.Setenv("LDAP_STARTTLS", "false")
-	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
+	configureLDAPEnv(t, ldapURL)
+
 	prevCfg := ldapCfg
 	ldapCfg = loadLDAPConfig()
 	t.Cleanup(func() {
@@ -160,111 +260,17 @@ func TestCvRouterProxyWithLDAP(t *testing.T) {
 	})
 
 	server := httptest.NewServer(cvRouter())
-	defer server.Close()
+	t.Cleanup(server.Close)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	doRequest := func(client *http.Client, method, path, user, pass string, body io.Reader, headers map[string]string) (int, string) {
-		t.Helper()
-		req, err := http.NewRequestWithContext(ctx, method, server.URL+path, body)
-		if err != nil {
-			t.Fatalf("new request: %v", err)
-		}
-		for key, value := range headers {
-			req.Header.Set(key, value)
-		}
-		if user != "" || pass != "" {
-			req.SetBasicAuth(user, pass)
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			t.Fatalf("do request: %v", err)
-		}
-		defer resp.Body.Close()
-		data, _ := io.ReadAll(resp.Body)
-		return resp.StatusCode, string(data)
-	}
+	return server.URL
+}
 
-	accessCases := []struct {
-		name       string
-		method     string
-		path       string
-		user       string
-		pass       string
-		wantStatus int
-	}{
-		{"ping", http.MethodGet, "/v2/", "hackers", "dogood", http.StatusOK},
-		{"wrong namespace", http.MethodGet, "/v2/something", "hackers", "dogood", http.StatusForbidden},
-		{"dashboard without auth", http.MethodGet, "/dashboard", "", "", http.StatusUnauthorized},
-		{"bad password", http.MethodGet, "/v2/", "hackers", "wrongpass", http.StatusUnauthorized},
-		{"bad user", http.MethodGet, "/v2/something", "wronguser", "dogood", http.StatusUnauthorized},
-		{"empty password", http.MethodGet, "/v2/", "hackers", "", http.StatusUnauthorized},
-		{"empty username and password", http.MethodGet, "/v2/", "", "", http.StatusUnauthorized},
-		{"empty password", http.MethodGet, "/v2/", "", "dogood", http.StatusUnauthorized},
-	}
-	for _, tc := range accessCases {
-		status, body := doRequest(client, tc.method, tc.path, tc.user, tc.pass, nil, nil)
-		if status != tc.wantStatus {
-			t.Fatalf("expected %d for %s, got %d: %s", tc.wantStatus, tc.name, status, body)
-		}
-	}
-
-	loginClient := &http.Client{
-		Timeout: 10 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	postLogin := func(values url.Values) (int, string) {
-		t.Helper()
-		headers := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
-		return doRequest(loginClient, http.MethodPost, "/login", "", "", strings.NewReader(values.Encode()), headers)
-	}
-
-	form := url.Values{}
-	form.Set("username", "hackers")
-	form.Set("password", "dogood")
-	loginReq, err := http.NewRequestWithContext(ctx, http.MethodPost, server.URL+"/login", strings.NewReader(form.Encode()))
-	if err != nil {
-		t.Fatalf("new login request: %v", err)
-	}
-	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	loginResp, err := loginClient.Do(loginReq)
-	if err != nil {
-		t.Fatalf("do login request: %v", err)
-	}
-	defer loginResp.Body.Close()
-	if loginResp.StatusCode != http.StatusSeeOther {
-		body, _ := io.ReadAll(loginResp.Body)
-		t.Fatalf("expected 303 for login, got %d: %s", loginResp.StatusCode, string(body))
-	}
-	if loc := loginResp.Header.Get("Location"); loc != "/api/dashboard" {
-		t.Fatalf("expected redirect to /api/dashboard, got %q", loc)
-	}
-	if !strings.Contains(loginResp.Header.Get("Set-Cookie"), "cv_session=") {
-		t.Fatalf("expected session cookie on login")
-	}
-
-	badForm := url.Values{}
-	badForm.Set("username", "hackers")
-	badForm.Set("password", "wrongpass")
-	badStatus, badBody := postLogin(badForm)
-	if badStatus != http.StatusOK {
-		t.Fatalf("expected 200 for bad login page, got %d: %s", badStatus, badBody)
-	}
-	if !strings.Contains(badBody, "Invalid credentials.") {
-		t.Fatalf("expected invalid credentials message on login failure")
-	}
-
-	emptyForm := url.Values{}
-	emptyForm.Set("username", "hackers")
-	emptyForm.Set("password", "")
-	emptyStatus, emptyBody := postLogin(emptyForm)
-	if emptyStatus != http.StatusOK {
-		t.Fatalf("expected 200 for empty login page, got %d: %s", emptyStatus, emptyBody)
-	}
-	if !strings.Contains(emptyBody, "Missing credentials.") {
-		t.Fatalf("expected missing credentials message on empty login")
-	}
+func configureLDAPEnv(t *testing.T, ldapURL string) {
+	t.Helper()
+	t.Setenv("LDAP_URL", ldapURL)
+	t.Setenv("LDAP_SKIP_TLS_VERIFY", "true")
+	t.Setenv("LDAP_STARTTLS", "false")
+	t.Setenv("LDAP_USER_DOMAIN", "@example.com")
 }
 
 func startGlauth(ctx context.Context, t *testing.T, network string) (string, func()) {
